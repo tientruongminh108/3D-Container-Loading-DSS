@@ -1,0 +1,31 @@
+Item_ID,PO_No,Customer_Code,Description,Qty_Pcs,Qty_Cartons
+DT-8411,PO-77042,CUST-A,Solid Wood Dining Table Carton (KD),32,32
+WD-9320,PO-77042,CUST-A,2-Door Wardrobe Carton (KD),24,24
+BS-4111,PO-91356,CUST-A,Bookshelf 5-Tier Carton (KD),8,8
+SD-2485,PO-91356,CUST-A,Study Desk Carton (KD),24,24
+NS-1686,PO-77042,CUST-A,Nightstand Carton (KD),8,8
+NS-7490,PO-77042,CUST-A,Nightstand Carton Assembled,8,8
+RS-4116,PO-77042,CUST-A,Recliner Sofa Chair Carton,32,32
+WS-4963,PO-77042,CUST-A,Wall Shelf Carton Floating,16,8
+SD-8601,PO-77042,CUST-A,Study Desk Carton Assembled,24,24
+DT-8629,PO-53210,CUST-B,Solid Wood Dining Table Carton Large (KD),24,24
+WD-8402,PO-53210,CUST-B,3-Door Wardrobe Carton (KD),24,24
+CT-4025,PO-53210,CUST-B,Coffee Table Carton Solid Wood (KD),24,24
+BF-4050,PO-53210,CUST-B,Bed Frame Headboard Carton (KD),20,20
+BF-2542,PO-88213,CUST-B,Bed Frame Base Carton (KD),28,28
+CD-8316,PO-53210,CUST-B,Chest of Drawers Carton 4-Drawer (KD),20,20
+SB-5970,PO-88213,CUST-B,Sideboard Buffet Carton (KD),24,24
+SF-9825,PO-53210,CUST-B,Sofa Frame Carton 3-Seater (KD),36,36
+BR-1245,PO-53210,CUST-B,Bar Stool Carton,16,8
+BR-9656,PO-53210,CUST-B,Bar Stool Carton Stackable,24,12
+TV-6345,PO-53210,CUST-B,TV Console Carton Assembled,28,28
+TV-9387,PO-64789,CUST-C,TV Console Carton (KD),28,28
+CN-8794,PO-40987,CUST-C,Console Table Carton Solid Wood (KD),12,12
+DB-3323,PO-64789,CUST-C,Dining Bench Carton Solid Wood (KD),16,16
+DC-8421,PO-40987,CUST-C,Dining Chair Carton (KD),32,16
+DC-3580,PO-64789,CUST-C,Dining Chair Carton Assembled,16,16
+RC-2034,PO-64789,CUST-C,Rattan Chair Carton,32,16
+RK-1975,PO-64789,CUST-C,Rocking Chair Carton Wooden,24,24
+OT-1584,PO-40987,CUST-C,Ottoman Carton Fabric,24,12
+CD-1492,PO-40987,CUST-C,Chest of Drawers Carton Assembled,28,28
+BS-8217,PO-64789,CUST-C,Bookshelf Carton Assembled 5-Tier,24,24

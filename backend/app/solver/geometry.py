@@ -1,0 +1,427 @@
+"""3D CLP Geometry definitions and coordinate conventions.
+
+AUTHORITATIVE COORDINATE CONVENTION:
+The container is a cuboid with usable length L, width W, height H (L >= W).
+- Origin (0, 0, 0) is the DEEPEST-LEFT-BOTTOM corner.
+- Plane x = 0 is the REAR wall. Plane x = L is the DOOR.
+- Plane y = 0 is the LEFT wall. Plane y = W is the RIGHT wall.
+- Plane z = 0 is the FLOOR. Plane z = H is the CEILING.
+- Loading proceeds from the rear toward the door (increasing x).
+- Unloading proceeds from the door (decreasing x).
+- For any box, rear_face = min_x, door_face = max_x.
+"""
+
+from dataclasses import dataclass
+from typing import List, Tuple, Optional
+from enum import Enum
+import math
+
+# BUG-03 fix: single authoritative epsilon for floor-level detection.
+# Using == 0.0 breaks after compaction shifts boxes by tiny floating-point amounts.
+FLOOR_EPSILON = 1e-4
+
+
+class Posture(int, Enum):
+    LWH = 1
+    WLH = 2
+    HLW = 3
+    HWL = 4
+    LHW = 5
+    WHL = 6
+
+
+@dataclass(frozen=True)
+class Dimensions:
+    length: float
+    width: float
+    height: float
+
+    def apply_posture(self, posture: Posture) -> "Dimensions":
+        l, w, h = self.length, self.width, self.height
+        if posture == Posture.LWH:
+            return Dimensions(l, w, h)
+        elif posture == Posture.WLH:
+            return Dimensions(w, l, h)
+        elif posture == Posture.HLW:
+            return Dimensions(h, l, w)
+        elif posture == Posture.HWL:
+            return Dimensions(h, w, l)
+        elif posture == Posture.LHW:
+            return Dimensions(l, h, w)
+        elif posture == Posture.WHL:
+            return Dimensions(w, h, l)
+        raise ValueError(f"Unknown posture: {posture}")
+
+    def volume(self) -> float:
+        return self.length * self.width * self.height
+
+    def footprint_area(self) -> float:
+        return self.length * self.width
+
+
+@dataclass(frozen=True)
+class Position:
+    x: float
+    y: float
+    z: float
+
+
+@dataclass
+class BoundingBox:
+    min_x: float
+    min_y: float
+    min_z: float
+    max_x: float
+    max_y: float
+    max_z: float
+    is_door_anchor: bool = False
+
+    @classmethod
+    def from_position_and_dims(cls, pos: Position, dims: Dimensions, is_door_anchor: bool = False) -> "BoundingBox":
+        return cls(
+            min_x=pos.x,
+            min_y=pos.y,
+            min_z=pos.z,
+            max_x=pos.x + dims.length,
+            max_y=pos.y + dims.width,
+            max_z=pos.z + dims.height,
+            is_door_anchor=is_door_anchor,
+        )
+
+    def overlaps(self, other: "BoundingBox") -> bool:
+        return not (
+            self.max_x <= other.min_x
+            or other.max_x <= self.min_x
+            or self.max_y <= other.min_y
+            or other.max_y <= self.min_y
+            or self.max_z <= other.min_z
+            or other.max_z <= self.min_z
+        )
+
+    def overlaps_xy(self, other: "BoundingBox") -> bool:
+        return not (
+            self.max_x <= other.min_x
+            or other.max_x <= self.min_x
+            or self.max_y <= other.min_y
+            or other.max_y <= self.min_y
+        )
+
+    def overlaps_yz(self, other: "BoundingBox") -> bool:
+        """Check overlap on Y and Z axes (for LIFO constraint)."""
+        return not (
+            self.max_y <= other.min_y
+            or other.max_y <= self.min_y
+            or self.max_z <= other.min_z
+            or other.max_z <= self.min_z
+        )
+
+    def supports(self, other: "BoundingBox") -> bool:
+        # Use FLOOR_EPSILON (1e-4) so compaction-shifted surfaces are still
+        # recognised as touching — consistent with all other floor/contact checks.
+        return (
+            abs(self.max_z - other.min_z) <= FLOOR_EPSILON
+            and self.overlaps_xy(other)
+        )
+
+    def contact_area(self, other: "BoundingBox") -> float:
+        if not self.supports(other):
+            return 0.0
+        overlap_x = min(self.max_x, other.max_x) - max(self.min_x, other.min_x)
+        overlap_y = min(self.max_y, other.max_y) - max(self.min_y, other.min_y)
+        return max(0, overlap_x) * max(0, overlap_y)
+
+    def contains_point(self, x: float, y: float, z: float) -> bool:
+        return (
+            self.min_x <= x < self.max_x
+            and self.min_y <= y < self.max_y
+            and self.min_z <= z < self.max_z
+        )
+
+    def center(self) -> Position:
+        return Position(
+            (self.min_x + self.max_x) / 2,
+            (self.min_y + self.max_y) / 2,
+            (self.min_z + self.max_z) / 2,
+        )
+
+
+def rear_face(bbox: BoundingBox) -> float:
+    """Return the X coordinate of the rear face (min_x, closest to rear wall x=0)."""
+    return bbox.min_x
+
+
+def door_face(bbox: BoundingBox) -> float:
+    """Return the X coordinate of the door-facing face (max_x, closest to door x=L)."""
+    return bbox.max_x
+
+
+def is_deeper(a: BoundingBox, b: BoundingBox) -> bool:
+    """Return True if box a is placed deeper (closer to rear wall x=0) than box b."""
+    return a.min_x < b.min_x
+
+
+@dataclass(frozen=True)
+class ExtremePoint:
+    x: float
+    y: float
+    z: float
+
+    def to_position(self) -> Position:
+        return Position(self.x, self.y, self.z)
+
+
+def generate_extreme_points(
+    placed_boxes: List[BoundingBox],
+    container_dims: Dimensions,
+    tolerance_gap: float = 0.0,
+) -> List[ExtremePoint]:
+    """Generate candidate anchor (extreme) points from placed box faces.
+
+    Each placed box contributes new candidate points at its outer faces
+    (+x toward the door, +y, +z). Every generated point is immediately projected
+    downward to the highest supporting surface beneath it (or container floor z=0).
+    """
+    raw_points: set = set()
+    # Seed origin (0, 0, 0): the deepest-left-bottom corner at the rear wall.
+    raw_points.add(ExtremePoint(0, 0, 0))
+
+    for box in placed_boxes:
+        # Original 3 EPs: face projections along each axis
+        raw_points.add(ExtremePoint(box.max_x, box.min_y, box.min_z))
+        raw_points.add(ExtremePoint(box.min_x, box.max_y, box.min_z))
+        raw_points.add(ExtremePoint(box.min_x, box.min_y, box.max_z))
+
+        # Composite EPs for tighter packing
+        raw_points.add(ExtremePoint(box.max_x, box.max_y, box.min_z))
+        raw_points.add(ExtremePoint(box.max_x, box.min_y, box.max_z))
+        raw_points.add(ExtremePoint(box.min_x, box.max_y, box.max_z))
+
+    valid_points = []
+    for p in raw_points:
+        # Bounds check (must be within container footprint)
+        if not (
+            p.x + tolerance_gap <= container_dims.length
+            and p.y + tolerance_gap <= container_dims.width
+            and p.z <= container_dims.height
+        ):
+            continue
+
+        # Apply downward gravity projection: snap any floating point to the
+        # highest supporting surface beneath (x, y) or to the floor (z=0).
+        projected = project_point_down(p, placed_boxes, container_dims)
+        valid_points.append(projected)
+
+    return valid_points
+
+
+def sort_extreme_points(points: List[ExtremePoint]) -> List[ExtremePoint]:
+    """Sort anchor points: rear-most first (ascending X, nearest rear wall x=0),
+    then bottom-up (ascending Z), then left-to-right (ascending Y).
+    """
+    return sorted(points, key=lambda p: (p.x, p.z, p.y))
+
+
+def calculate_contact_ratio(
+    candidate_box: BoundingBox,
+    placed_boxes: List[BoundingBox],
+    container_dims: Dimensions,
+) -> float:
+    # BUG-03 fix: use FLOOR_EPSILON instead of == 0 so compaction-shifted
+    # boxes at z ≈ 0 are still treated as floor items.
+    if candidate_box.min_z <= FLOOR_EPSILON:
+        return 1.0
+
+    contact_area = 0.0
+    footprint_area = (candidate_box.max_x - candidate_box.min_x) * (
+        candidate_box.max_y - candidate_box.min_y
+    )
+
+    c_min_z = candidate_box.min_z
+    for box in placed_boxes:
+        if abs(box.max_z - c_min_z) <= FLOOR_EPSILON:
+            contact_area += box.contact_area(candidate_box)
+
+    if footprint_area == 0:
+        return 0.0
+
+    return contact_area / footprint_area
+
+
+def calculate_residual_volume(
+    candidate_box: BoundingBox,
+    placed_boxes: List[BoundingBox],
+    container_dims: Dimensions,
+    occupied_volume: Optional[float] = None,
+) -> float:
+    total_volume = container_dims.volume()
+    if occupied_volume is not None:
+        occupied = occupied_volume
+    else:
+        occupied = sum(
+            (b.max_x - b.min_x) * (b.max_y - b.min_y) * (b.max_z - b.min_z)
+            for b in placed_boxes
+        )
+    candidate_vol = (
+        (candidate_box.max_x - candidate_box.min_x)
+        * (candidate_box.max_y - candidate_box.min_y)
+        * (candidate_box.max_z - candidate_box.min_z)
+    )
+    return total_volume - (occupied + candidate_vol)
+
+
+def calculate_cog(placed_boxes: List[BoundingBox], weights: List[float]) -> Position:
+    """Compute weighted centre of gravity in a single pass.
+
+    Avoids the previous 3-pass implementation that allocated N temporary
+    ``Position`` objects and iterated the full list three times.
+    """
+    if not placed_boxes:
+        return Position(0, 0, 0)
+
+    total_weight = sum(weights)
+    if total_weight == 0:
+        return Position(0, 0, 0)
+
+    cx = cy = cz = 0.0
+    for b, w in zip(placed_boxes, weights):
+        cx += ((b.min_x + b.max_x) * 0.5) * w
+        cy += ((b.min_y + b.max_y) * 0.5) * w
+        cz += ((b.min_z + b.max_z) * 0.5) * w
+
+    return Position(cx / total_weight, cy / total_weight, cz / total_weight)
+
+
+def get_permitted_postures(this_way_up: bool) -> List[Posture]:
+    """Get permitted postures for an item:
+    - this_way_up=True: only LWH, WLH (height axis must remain vertical)
+    - this_way_up=False: all 6 postures allowed
+    """
+    if not this_way_up:
+        return list(Posture)
+    return [Posture.LWH, Posture.WLH]
+
+
+def check_support_ratio(
+    candidate_box: BoundingBox,
+    placed_boxes: List[BoundingBox],
+    min_support_ratio: float,
+) -> bool:
+    # BUG-03 fix: use FLOOR_EPSILON so a box at z ≈ 0 (e.g. after compaction
+    # floating-point drift) is correctly treated as a floor item.
+    if candidate_box.min_z <= FLOOR_EPSILON:
+        return True
+
+    contact_area = 0.0
+    footprint_area = (candidate_box.max_x - candidate_box.min_x) * (
+        candidate_box.max_y - candidate_box.min_y
+    )
+
+    c_min_z = candidate_box.min_z
+    for box in placed_boxes:
+        if abs(box.max_z - c_min_z) <= FLOOR_EPSILON:
+            contact_area += box.contact_area(candidate_box)
+
+    if footprint_area == 0:
+        return False
+
+    return (contact_area / footprint_area) >= min_support_ratio
+
+
+
+
+
+def check_cog_balance(
+    cog: Position,
+    container_dims: Dimensions,
+    tolerance_xy: float,
+    tolerance_z: float,
+) -> Tuple[bool, float, float]:
+    ideal_x = container_dims.length / 2
+    ideal_y = container_dims.width / 2
+    ideal_z = container_dims.height / 2
+
+    dev_xy = math.sqrt((cog.x - ideal_x) ** 2 + (cog.y - ideal_y) ** 2) / max(
+        container_dims.length, container_dims.width
+    )
+    dev_z = abs(cog.z - ideal_z) / container_dims.height
+
+    return (
+        dev_xy <= tolerance_xy and dev_z <= tolerance_z,
+        dev_xy,
+        dev_z,
+    )
+
+
+_PROJ_EPS = 1e-9  # closed-interval tolerance for projection containment tests
+
+
+def project_point_down(
+    point: ExtremePoint,
+    placed_boxes: List[BoundingBox],
+    container_dims: Dimensions,
+) -> ExtremePoint:
+    """
+    Project a dangling extreme point down to the highest supporting surface below it.
+    Per Section 5.2.3: if point doesn't have solid support directly beneath it,
+    project it down (decreasing z) until it lands on a box top face or container floor.
+
+    BUG-05 fix: use closed ±epsilon intervals instead of the original half-open
+    [min, max) intervals.  EPs generated at box face boundaries (e.g. x == box.max_x)
+    were not matched by the old strict-less-than test and fell incorrectly to z=0.
+    """
+    x, y, z = point.x, point.y, point.z
+    if z <= FLOOR_EPSILON:
+        return point
+
+    candidate_z = 0.0
+    for box in placed_boxes:
+        # BUG-05: closed interval — a point exactly on the box edge is included
+        if (box.min_x - _PROJ_EPS <= x <= box.max_x + _PROJ_EPS
+                and box.min_y - _PROJ_EPS <= y <= box.max_y + _PROJ_EPS):
+            if abs(box.max_z - z) < 1e-6:
+                return point  # already sitting on this box top
+            if box.max_z < z and box.max_z > candidate_z:
+                candidate_z = box.max_z
+
+    return ExtremePoint(x, y, candidate_z)
+
+
+def prune_dominated_extreme_points(points: List[ExtremePoint]) -> List[ExtremePoint]:
+    """Dominance pruning per Section 5.2: Q dominates P if Q is at least as good
+    on all 3 axes with equality on at least 2 and strict improvement on the third.
+
+    Performance notes:
+    - Input is sorted by (z, y, x) ascending; every ``q`` in ``pruned`` therefore
+      satisfies ``q.z <= p.z``, so the z-axis condition of the dominance test is
+      always true and need not be re-checked.
+    - A candidate ``q`` can never dominate ``p`` if ``q.x > p.x`` or
+      ``q.y > p.y`` — an early ``continue`` filters these out before the
+      more expensive equality-axis computation.
+    - ``equal_axes`` is computed with integer addition to avoid a temporary list.
+    """
+    if not points:
+        return []
+
+    points = sorted(points, key=lambda p: (p.z, p.y, p.x))
+
+    pruned = []
+    for p in points:
+        dominated = False
+        for q in pruned:
+            # q.z <= p.z always (insertion order from sorted list).
+            # Skip q's that are strictly worse than p on x or y — they cannot
+            # dominate p regardless of the z relationship.
+            if q.x > p.x + 1e-9 or q.y > p.y + 1e-9:
+                continue
+            # Inline equal_axes count — avoids a temporary list allocation.
+            eq_x = abs(q.x - p.x) < 1e-9
+            eq_y = abs(q.y - p.y) < 1e-9
+            eq_z = abs(q.z - p.z) < 1e-9
+            equal_axes = eq_x + eq_y + eq_z
+            if equal_axes >= 2 and (q.x < p.x or q.y < p.y or q.z < p.z):
+                dominated = True
+                break
+        if not dominated:
+            pruned.append(p)
+
+    return pruned

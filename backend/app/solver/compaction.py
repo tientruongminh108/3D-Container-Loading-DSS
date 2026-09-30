@@ -1,0 +1,524 @@
+from typing import List, Tuple, Optional, Any
+import copy
+from app.solver.geometry import (
+    Dimensions,
+    BoundingBox,
+    ExtremePoint,
+    Posture,
+    FLOOR_EPSILON,
+    generate_extreme_points,
+    sort_extreme_points,
+    check_support_ratio,
+)
+from app.solver.fitness import calculate_fitness, FitnessResult
+from app.solver.placement import find_best_placement, _add_box_extreme_points
+from app.config import get_settings
+
+
+def is_valid_shift(
+    i: int,
+    new_bbox: BoundingBox,
+    current_bboxes: List[BoundingBox],
+    min_support_ratio: float,
+) -> bool:
+    """Validate that moving box i to new_bbox preserves support constraints.
+
+    1. If new_bbox is above the floor, it must have at least min_support_ratio
+       support from the boxes underneath it.
+    2. Any box resting on old_bbox must continue to have at least min_support_ratio
+       support after box i is moved.
+    """
+    old_bbox = current_bboxes[i]
+    current_bboxes[i] = new_bbox
+
+    # 1. Check if the moved box itself has support (if not on floor)
+    if new_bbox.min_z > FLOOR_EPSILON:
+        if not check_support_ratio(new_bbox, current_bboxes, min_support_ratio):
+            current_bboxes[i] = old_bbox
+            return False
+
+    # 2. Check if any box resting on old_bbox loses support
+    for j, b_j in enumerate(current_bboxes):
+        if j != i and b_j.min_z > FLOOR_EPSILON:
+            if abs(b_j.min_z - old_bbox.max_z) < 1e-4 and old_bbox.contact_area(b_j) > 1e-4:
+                if not check_support_ratio(b_j, current_bboxes, min_support_ratio):
+                    current_bboxes[i] = old_bbox
+                    return False
+
+    current_bboxes[i] = old_bbox
+    return True
+
+
+def _lifo_ok_after_move(
+    i: int,
+    new_bbox: BoundingBox,
+    bboxes: List[BoundingBox],
+    placed_data: List[Any],
+    is_lcl: bool,
+) -> bool:
+    """LCL gate for any compaction move (X, Y, or Z).
+    After moving unit i to new_bbox, no (early, late) pair sharing a Y-Z
+    cross-section may have the late unit closer to the door than the early unit's rear face.
+    Order-independent, so it is valid for X, Y and Z moves alike.
+    Non-LCL always passes.
+    """
+    if not is_lcl:
+        return True
+    seq_i = getattr(placed_data[i], 'customer_sequence', 0)
+    for j, b_j in enumerate(bboxes):
+        if j == i:
+            continue
+        seq_j = getattr(placed_data[j], 'customer_sequence', 0)
+        if seq_i == seq_j or not new_bbox.overlaps_yz(b_j):
+            continue
+        if seq_i < seq_j:
+            # i unloads earlier (nearer door, larger x); j unloads later (deeper, smaller x)
+            if b_j.max_x > new_bbox.min_x + 1e-6:
+                return False
+        else:
+            # j unloads earlier (nearer door, larger x); i unloads later (deeper, smaller x)
+            if new_bbox.max_x > b_j.min_x + 1e-6:
+                return False
+    return True
+
+
+def compact_x_rear(
+    placed_bboxes: List[BoundingBox],
+    placed_data: List[Any],
+    container_dims: Dimensions,
+    is_lcl: bool = False,
+    min_support_ratio: Optional[float] = None,
+) -> List[BoundingBox]:
+    """Pass 1: X-axis (rear-wall) compaction.
+
+    Slide placed boxes toward the rear wall (decreasing x, toward x=0) without
+    colliding with any box that overlaps in both y and z and sits behind it,
+    without breaking vertical support for the moved box or boxes resting on it,
+    and in LCL mode without violating customer sequence depth ordering.
+    Boxes are processed rear-most first (lowest min_x to highest).
+    """
+    if min_support_ratio is None:
+        min_support_ratio = get_settings().SUPPORT_RATIO
+
+    n = len(placed_bboxes)
+    if n == 0:
+        return placed_bboxes
+
+    # Process rear-most boxes first (lowest min_x to highest, ascending)
+    indices = sorted(range(n), key=lambda i: placed_bboxes[i].min_x)
+
+    for i in indices:
+        b_i = placed_bboxes[i]
+        limit_x = 0.0
+
+        for j in range(n):
+            if i == j:
+                continue
+            b_j = placed_bboxes[j]
+
+            # Overlap in y and z
+            overlap_y = min(b_i.max_y, b_j.max_y) - max(b_i.min_y, b_j.min_y) > 1e-6
+            overlap_z = min(b_i.max_z, b_j.max_z) - max(b_i.min_z, b_j.min_z) > 1e-6
+
+            if overlap_y and overlap_z and b_j.max_x <= b_i.min_x + 1e-6:
+                if b_j.max_x > limit_x:
+                    limit_x = b_j.max_x
+
+        if limit_x < b_i.min_x - 1e-6:
+            shift_x = b_i.min_x - limit_x
+            candidate = BoundingBox(
+                b_i.min_x - shift_x,
+                b_i.min_y,
+                b_i.min_z,
+                b_i.max_x - shift_x,
+                b_i.max_y,
+                b_i.max_z,
+                is_door_anchor=b_i.is_door_anchor,
+            )
+            if (is_valid_shift(i, candidate, placed_bboxes, min_support_ratio)
+                    and _lifo_ok_after_move(i, candidate, placed_bboxes, placed_data, is_lcl)):
+                placed_bboxes[i] = candidate
+
+    return placed_bboxes
+
+
+def compact_y_sidewall(
+    placed_bboxes: List[BoundingBox],
+    placed_data: List[Any],
+    container_dims: Dimensions,
+    is_lcl: bool = False,
+    min_support_ratio: Optional[float] = None,
+) -> List[BoundingBox]:
+    """Pass 2: Y-axis (side-wall) compaction.
+
+    Slide placed boxes toward the left wall (decreasing y, min-y = 0) without
+    colliding with any box that overlaps in both x and z and sits to its left,
+    and without breaking vertical support for the moved box or boxes resting on it.
+    Boxes are processed left-most first (lowest min_y to highest).
+    """
+    if min_support_ratio is None:
+        min_support_ratio = get_settings().SUPPORT_RATIO
+
+    n = len(placed_bboxes)
+    if n == 0:
+        return placed_bboxes
+
+    # Process left-most boxes first (lowest min_y to highest)
+    indices = sorted(range(n), key=lambda i: placed_bboxes[i].min_y)
+
+    for i in indices:
+        b_i = placed_bboxes[i]
+        limit_y = 0.0
+
+        for j in range(n):
+            if i == j:
+                continue
+            b_j = placed_bboxes[j]
+
+            # Overlap in x and z
+            overlap_x = min(b_i.max_x, b_j.max_x) - max(b_i.min_x, b_j.min_x) > 1e-6
+            overlap_z = min(b_i.max_z, b_j.max_z) - max(b_i.min_z, b_j.min_z) > 1e-6
+
+            if overlap_x and overlap_z and b_j.max_y <= b_i.min_y + 1e-6:
+                if b_j.max_y > limit_y:
+                    limit_y = b_j.max_y
+
+        if limit_y < b_i.min_y - 1e-6:
+            shift_y = b_i.min_y - limit_y
+            candidate = BoundingBox(
+                b_i.min_x,
+                b_i.min_y - shift_y,
+                b_i.min_z,
+                b_i.max_x,
+                b_i.max_y - shift_y,
+                b_i.max_z,
+                is_door_anchor=b_i.is_door_anchor,
+            )
+            if (is_valid_shift(i, candidate, placed_bboxes, min_support_ratio)
+                    and _lifo_ok_after_move(i, candidate, placed_bboxes, placed_data, is_lcl)):
+                placed_bboxes[i] = candidate
+
+    return placed_bboxes
+
+
+def compact_z_downward(
+    placed_bboxes: List[BoundingBox],
+    placed_data: List[Any],
+    container_dims: Dimensions,
+    is_lcl: bool = False,
+    min_support_ratio: Optional[float] = None,
+) -> List[BoundingBox]:
+    """Pass 3: Z-axis downward compaction (gravity drop).
+
+    Slide placed boxes downward (decreasing z, toward floor z=0) without
+    colliding with any box that overlaps in both x and y beneath it,
+    ensuring solid support (at least min_support_ratio) and stackability.
+    Boxes are processed bottom-up (lowest min_z to highest).
+    """
+    if min_support_ratio is None:
+        min_support_ratio = get_settings().SUPPORT_RATIO
+
+    n = len(placed_bboxes)
+    if n == 0:
+        return placed_bboxes
+
+    # Process bottom-most boxes first (lowest min_z to highest)
+    indices = sorted(range(n), key=lambda i: placed_bboxes[i].min_z)
+
+    for i in indices:
+        b_i = placed_bboxes[i]
+        if b_i.min_z <= FLOOR_EPSILON:
+            continue
+
+        limit_z = 0.0
+
+        for j in range(n):
+            if i == j:
+                continue
+            b_j = placed_bboxes[j]
+
+            # Overlap in x and y
+            overlap_x = min(b_i.max_x, b_j.max_x) - max(b_i.min_x, b_j.min_x) > 1e-4
+            overlap_y = min(b_i.max_y, b_j.max_y) - max(b_i.min_y, b_j.min_y) > 1e-4
+
+            if overlap_x and overlap_y and b_j.max_z <= b_i.min_z + 1e-4:
+                if b_j.max_z > limit_z:
+                    limit_z = b_j.max_z
+
+        if limit_z < b_i.min_z - 1e-4:
+            shift_z = b_i.min_z - limit_z
+            candidate = BoundingBox(
+                b_i.min_x,
+                b_i.min_y,
+                limit_z,
+                b_i.max_x,
+                b_i.max_y,
+                b_i.max_z - shift_z,
+                is_door_anchor=b_i.is_door_anchor,
+            )
+            # Check stackability weight constraint if resting on another box
+            valid = True
+            if limit_z > FLOOR_EPSILON:
+                cand_wt = getattr(placed_data[i], 'boxes', [placed_data[i]])[0].weight_kg
+                for j, b_j in enumerate(placed_bboxes):
+                    if j != i and abs(b_j.max_z - limit_z) < 1e-4 and b_j.supports(candidate):
+                        sup_wt = getattr(placed_data[j], 'boxes', [placed_data[j]])[0].weight_kg
+                        if cand_wt > sup_wt + 1e-3:
+                            valid = False
+                            break
+
+            if (valid and is_valid_shift(i, candidate, placed_bboxes, min_support_ratio)
+                    and _lifo_ok_after_move(i, candidate, placed_bboxes, placed_data, is_lcl)):
+                placed_bboxes[i] = candidate
+
+    return placed_bboxes
+
+
+def _unit_volume(unit: Any) -> float:
+    if hasattr(unit, 'length_cm') and hasattr(unit, 'width_cm') and hasattr(unit, 'height_cm'):
+        return float(unit.length_cm * unit.width_cm * unit.height_cm)
+    if hasattr(unit, 'volume') and callable(unit.volume):
+        return float(unit.volume())
+    return 0.0
+
+
+def rescan_and_insert(
+    placed_bboxes: List[BoundingBox],
+    placed_data: List[Any],
+    placed_postures: List[Posture],
+    unplaced: List[Tuple[Any, str]],
+    container_dims: Dimensions,
+    current_weight: float,
+    max_weight: float,
+    is_lcl: bool = False,
+) -> Tuple[List[BoundingBox], List[Any], List[Posture], List[Tuple[Any, str]], float]:
+    """Post-compaction insertion pass: two-phase strategy.
+
+    Phase 1 — Heavy-first: attempt to place every unplaced item heaviest-first
+    into any available extreme point.  This gives high-weight boxes that were
+    skipped during the main GA run a second chance at any freed/compacted space
+    before lighter items consume it.
+
+    Phase 2 — Light gap-fill (iterative, up to MAX_RESCAN_ITERS passes):
+    Re-sort remaining unplaced items smallest-volume-first so flat boxes can
+    slot into tight residual gaps that heavy boxes could not fit into.
+
+    The elevated-EP top-fill pre-pass is retained as before and runs first.
+    """
+    if not unplaced:
+        return placed_bboxes, placed_data, placed_postures, unplaced, current_weight
+
+    MAX_RESCAN_ITERS = 3  # Change 2: iterate up to 3 passes
+
+    last_customer_sequence = max(
+        (getattr(u, 'customer_sequence', 0) for u in placed_data),
+        default=0,
+    )
+
+    # BUG-14 fix: seed incremental EP state from the current placement so we can
+    # use _add_box_extreme_points instead of a full O(N) regeneration per insertion.
+    extreme_points = generate_extreme_points(placed_bboxes, container_dims)
+    sorted_eps = sort_extreme_points(extreme_points)
+    seen_points: set = set(extreme_points)
+    placement_count = len(placed_bboxes)  # seed counter so pruning interval is correct
+
+    # -----------------------------------------------------------------------
+    # Pre-pass: "top-fill" — try to place unplaced items onto elevated EPs
+    # (on top of existing cargo) before the general rescan.
+    # Items are tried smallest-volume first so flat boxes slot into headroom
+    # before bulkier ones. Only EPs with z > FLOOR_EPSILON are offered here.
+    # -----------------------------------------------------------------------
+    elevated_eps = [ep for ep in sorted_eps if ep.z > FLOOR_EPSILON]
+    if elevated_eps and unplaced:
+        unplaced_sorted = sorted(
+            unplaced,
+            key=lambda pair: (_unit_volume(pair[0]), getattr(pair[0], 'weight_kg', 0.0)),
+        )
+        remaining_after_top: List[Tuple[Any, str]] = []
+        for unit, old_reason in unplaced_sorted:
+            placement_res, reason = find_best_placement(
+                box=unit,
+                placed_boxes=placed_bboxes,
+                placed_boxes_data=placed_data,
+                container_dims=container_dims,
+                current_weight=current_weight,
+                max_weight=max_weight,
+                is_lcl=is_lcl,
+                extreme_points=elevated_eps,
+                last_customer_sequence=last_customer_sequence,
+            )
+            if placement_res:
+                new_bbox = BoundingBox.from_position_and_dims(placement_res.position, placement_res.dims)
+                placed_bboxes.append(new_bbox)
+                placed_data.append(unit)
+                placed_postures.append(placement_res.posture)
+                current_weight += unit.weight_kg
+                placement_count += 1
+                extreme_points = _add_box_extreme_points(
+                    new_bbox, extreme_points, seen_points, placed_bboxes,
+                    container_dims, placement_count,
+                )
+                sorted_eps = sort_extreme_points(extreme_points)
+                elevated_eps = [ep for ep in sorted_eps if ep.z > FLOOR_EPSILON]
+            else:
+                remaining_after_top.append((unit, old_reason))
+        unplaced = remaining_after_top
+    # -----------------------------------------------------------------------
+
+    # -----------------------------------------------------------------------
+    # Phase 1: Heavy-first insertion.
+    # Try every remaining unplaced item sorted heaviest-first (weight desc,
+    # then volume desc as tiebreaker) against all available extreme points.
+    # Heavy boxes that the main GA couldn't fit may now fit in compacted space.
+    # -----------------------------------------------------------------------
+    if unplaced:
+        heavy_sorted = sorted(
+            unplaced,
+            key=lambda pair: (
+                -getattr(pair[0], 'weight_kg', 0.0),
+                -_unit_volume(pair[0]),
+            ),
+        )
+        remaining_after_heavy: List[Tuple[Any, str]] = []
+        for unit, old_reason in heavy_sorted:
+            placement_res, reason = find_best_placement(
+                box=unit,
+                placed_boxes=placed_bboxes,
+                placed_boxes_data=placed_data,
+                container_dims=container_dims,
+                current_weight=current_weight,
+                max_weight=max_weight,
+                is_lcl=is_lcl,
+                extreme_points=sorted_eps,
+                last_customer_sequence=last_customer_sequence,
+            )
+            if placement_res:
+                new_bbox = BoundingBox.from_position_and_dims(placement_res.position, placement_res.dims)
+                placed_bboxes.append(new_bbox)
+                placed_data.append(unit)
+                placed_postures.append(placement_res.posture)
+                current_weight += unit.weight_kg
+                placement_count += 1
+                extreme_points = _add_box_extreme_points(
+                    new_bbox, extreme_points, seen_points, placed_bboxes,
+                    container_dims, placement_count,
+                )
+                sorted_eps = sort_extreme_points(extreme_points)
+            else:
+                remaining_after_heavy.append((unit, old_reason))
+        unplaced = remaining_after_heavy
+    # -----------------------------------------------------------------------
+
+    # -----------------------------------------------------------------------
+    # Phase 2: Light gap-fill (iterative, smallest-volume-first).
+    # Residual unplaced items (mostly flat/light) are slotted into tight gaps
+    # that the heavy-first pass could not fill.
+    # -----------------------------------------------------------------------
+    for _rescan_iter in range(MAX_RESCAN_ITERS):
+        if not unplaced:
+            break
+
+        # Sort unplaced items smallest volume first, then smallest weight
+        unplaced_sorted = sorted(
+            unplaced,
+            key=lambda pair: (_unit_volume(pair[0]), getattr(pair[0], 'weight_kg', 0.0)),
+        )
+
+        remaining_unplaced: List[Tuple[Any, str]] = []
+        placed_any = False
+
+        for unit, old_reason in unplaced_sorted:
+            placement_res, reason = find_best_placement(
+                box=unit,
+                placed_boxes=placed_bboxes,
+                placed_boxes_data=placed_data,
+                container_dims=container_dims,
+                current_weight=current_weight,
+                max_weight=max_weight,
+                is_lcl=is_lcl,
+                extreme_points=sorted_eps,
+                last_customer_sequence=last_customer_sequence,
+            )
+
+            if placement_res:
+                new_bbox = BoundingBox.from_position_and_dims(placement_res.position, placement_res.dims)
+                placed_bboxes.append(new_bbox)
+                placed_data.append(unit)
+                placed_postures.append(placement_res.posture)
+                current_weight += unit.weight_kg
+                placed_any = True
+
+                # BUG-14 fix: incremental EP update — O(1) amortized vs O(N) full regen
+                placement_count += 1
+                extreme_points = _add_box_extreme_points(
+                    new_bbox, extreme_points, seen_points, placed_bboxes,
+                    container_dims, placement_count,
+                )
+                sorted_eps = sort_extreme_points(extreme_points)
+            else:
+                remaining_unplaced.append((unit, reason))
+
+        unplaced = remaining_unplaced
+
+        # Stop early if no progress was made in this pass
+        if not placed_any:
+            break
+    # -----------------------------------------------------------------------
+
+    return placed_bboxes, placed_data, placed_postures, unplaced, current_weight
+
+
+def run_compaction_pass(
+    placed_bboxes: List[BoundingBox],
+    placed_data: List[Any],
+    placed_postures: List[Posture],
+    unplaced: List[Tuple[Any, str]],
+    container_dims: Dimensions,
+    max_weight: float,
+    is_lcl: bool,
+    current_weight: float,
+    min_support_ratio: Optional[float] = None,
+) -> Tuple[List[BoundingBox], List[Any], List[Posture], List[Tuple[Any, str]], float, FitnessResult]:
+    """Execute complete post-processing compaction pass:
+    1. X-axis rear-wall slide
+    2. Y-axis side-wall slide
+    3. Z-axis downward slide (gravity drop)
+    4. Re-scan and insertion of unplaced items
+    5. Recompute fitness result reflecting compacted + inserted solution.
+    """
+    placed_bboxes = [copy.deepcopy(b) for b in placed_bboxes]
+    placed_data = list(placed_data)
+    placed_postures = list(placed_postures)
+    unplaced = list(unplaced)
+
+    # 1. X compaction
+    placed_bboxes = compact_x_rear(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio)
+
+    # 2. Y compaction
+    placed_bboxes = compact_y_sidewall(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio)
+
+    # 3. Z compaction (downward / gravity settlement)
+    placed_bboxes = compact_z_downward(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio)
+
+    # 4. Insertion re-scan
+    placed_bboxes, placed_data, placed_postures, unplaced, current_weight = rescan_and_insert(
+        placed_bboxes=placed_bboxes,
+        placed_data=placed_data,
+        placed_postures=placed_postures,
+        unplaced=unplaced,
+        container_dims=container_dims,
+        current_weight=current_weight,
+        max_weight=max_weight,
+        is_lcl=is_lcl,
+    )
+
+    # 4. Recompute fitness
+    fitness_res = calculate_fitness(
+        placed_bboxes=placed_bboxes,
+        placed_data=placed_data,
+        unplaced=unplaced,
+        container_dims=container_dims,
+        max_weight=max_weight,
+    )
+
+    return placed_bboxes, placed_data, placed_postures, unplaced, current_weight, fitness_res
