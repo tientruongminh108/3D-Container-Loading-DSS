@@ -139,13 +139,13 @@ export const packingListApi = {
   },
   list: (skip = 0, limit = 100) =>
     api.get<PackingListSummary[]>(`/packing-lists`, { params: { skip, limit } }).then((r) => r.data),
-  get: (id: number) =>
+  get: (id: number | string) =>
     api.get<PackingList>(`/packing-lists/${id}`).then((r) => r.data),
   create: (packingList: PackingListCreate) =>
     api.post<PackingList>('/packing-lists', packingList).then((r) => r.data),
-  update: (id: number, packingList: PackingListUpdate) =>
+  update: (id: number | string, packingList: PackingListUpdate) =>
     api.put<PackingList>(`/packing-lists/${id}`, packingList).then((r) => r.data),
-  delete: (id: number) =>
+  delete: (id: number | string) =>
     api.delete(`/packing-lists/${id}`).then((r) => r.data),
   uploadAndSaveCsv: (file: File) => {
     const formData = new FormData()

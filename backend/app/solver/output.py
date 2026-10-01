@@ -1,6 +1,12 @@
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from app.solver.geometry import BoundingBox, Position, Dimensions, Posture
+from app.solver.geometry import (
+    BoundingBox,
+    Position,
+    Dimensions,
+    Posture,
+    transform_position_by_posture,
+)
 from app.solver.parsing import Box
 from app.solver.block_generation import Block
 from app.solver.ga import Individual
@@ -21,35 +27,6 @@ class Layer:
     x_min: float
     x_max: float
     boxes: List[PlacedBox]
-
-
-def transform_position_by_posture(pos: Position, posture: Posture, block_dims: Optional[Dimensions] = None) -> Position:
-    """Transform a position from block-local coordinates to world coordinates
-    given the block's posture. The block's origin corner is at (0,0,0) in its
-    local coordinate system.
-    
-    Posture mapping (per Table 1 / Dimensions.apply_posture):
-      1. LWH: (x, y, z)
-      2. WLH: (y, x, z)
-      3. HLW: (z, x, y)
-      4. HWL: (z, y, x)
-      5. LHW: (x, z, y)
-      6. WHL: (y, z, x)
-    """
-    x, y, z = pos.x, pos.y, pos.z
-    if posture == Posture.LWH:
-        return Position(x, y, z)
-    elif posture == Posture.WLH:
-        return Position(y, x, z)
-    elif posture == Posture.HLW:
-        return Position(z, x, y)
-    elif posture == Posture.HWL:
-        return Position(z, y, x)
-    elif posture == Posture.LHW:
-        return Position(x, z, y)
-    elif posture == Posture.WHL:
-        return Position(y, z, x)
-    return Position(x, y, z)
 
 
 def explode_blocks(
@@ -305,6 +282,7 @@ def calculate_metrics(
     unplaced: List[UnplacedCarton],
     container_dims: Dimensions,
     max_weight: float,
+    planning_time_seconds: Optional[float] = None,
 ) -> LoadMetrics:
     placed_count = len(placed_boxes)
     unplaced_count = len(unplaced)
@@ -315,6 +293,10 @@ def calculate_metrics(
     )
     container_volume = container_dims.length * container_dims.width * container_dims.height
     fill_rate = placed_volume / container_volume if container_volume > 0 else 0
+
+    total_cbm = round(container_volume / 1_000_000.0, 3)
+    used_cbm = round(placed_volume / 1_000_000.0, 3)
+    unused_cbm = round(max(0.0, (container_volume - placed_volume) / 1_000_000.0), 3)
 
     used_weight = sum(b.weight_kg for b in placed_boxes)
     weight_util = used_weight / max_weight if max_weight > 0 else 0
@@ -349,6 +331,10 @@ def calculate_metrics(
         cog_z=cog.z,
         cog_deviation_xy=cog_dev_xy,
         cog_deviation_z=cog_dev_z,
+        total_volume_cbm=total_cbm,
+        used_volume_cbm=used_cbm,
+        unused_volume_cbm=unused_cbm,
+        planning_time_seconds=planning_time_seconds,
     )
 
 
@@ -427,6 +413,7 @@ def build_run_result(
     status: str = "completed",
     error_message: str = None,
     options=None,
+    planning_time_seconds: Optional[float] = None,
 ) -> RunResult:
     if run_id is None:
         run_id = str(uuid.uuid4())
@@ -469,7 +456,13 @@ def build_run_result(
 
     layers = build_layers(all_placed_boxes)
     unplaced_cartons = build_unplaced_cartons(unplaced_boxes, unplaced_blocks, is_lcl)
-    metrics = calculate_metrics(all_placed_boxes, unplaced_cartons, container_dims, container_spec.max_weight_kg)
+    metrics = calculate_metrics(
+        all_placed_boxes,
+        unplaced_cartons,
+        container_dims,
+        container_spec.max_weight_kg,
+        planning_time_seconds=planning_time_seconds,
+    )
 
     layer_data = []
     for layer in layers:
@@ -519,4 +512,5 @@ def build_run_result(
         completed_at=datetime.utcnow() if status == "completed" else None,
         error_message=error_message,
         options=options,
+        planning_time_seconds=planning_time_seconds,
     )

@@ -53,7 +53,8 @@ class Settings(BaseSettings):
     WALL_FIRST_RULE: str = "B"  # "A" (baseline), "B" (strict wall-first, validated +4.3% gain), "C" (soft overrun penalty)
     WALL_FIRST_WEIGHT: float = 1.0  # Weight w for Rule C: score - w * (overrun / L)
     WALL_FIRST_SECONDARY_ORDER: str = "ZY"  # "ZY" (lower z then smaller y) or "YZ" (smaller y then lower z)
-    TOLERANCE_GAP_CM: float = 2.0
+    WALL_FIRST_PENALTY: float = 2.0  # Overrun penalty for FCL dynamic blocks branch
+    TOLERANCE_GAP_CM: float = 0.0
     SUPPORT_RATIO: float = 0.6
     CONTACT_RATIO_WEIGHT: float = 1.0
     RESIDUAL_VOLUME_WEIGHT: float = 1.0

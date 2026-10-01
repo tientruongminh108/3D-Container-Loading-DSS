@@ -5,7 +5,7 @@ import type { WizardState, RunProgress, RunOptions, PackingListPreview, RunResul
 const DEFAULT_OPTIONS: RunOptions = {
   population_size: 30,
   generations: 40,
-  tolerance_gap_cm: 2.0,
+  tolerance_gap_cm: 0.0,
 }
 
 interface WizardStore extends WizardState {
@@ -99,6 +99,13 @@ export const useWizardStore = create<WizardStore>()(
     }),
     {
       name: 'wizard-storage',
+      version: 2,
+      migrate: (persistedState: any) => {
+        if (persistedState?.options?.tolerance_gap_cm === 2.0) {
+          persistedState.options.tolerance_gap_cm = 0.0
+        }
+        return persistedState
+      },
       partialize: (state) => ({
         options: state.options,
         container: state.container,

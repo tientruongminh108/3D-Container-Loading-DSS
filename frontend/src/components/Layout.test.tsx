@@ -17,7 +17,7 @@ vi.mock('../hooks/useApi', () => ({
 const mockWizardState = {
   packingList: { preview: null, selectedId: null, mode: 'existing' },
   container: { selectedId: null, selectedType: '40HC' },
-  options: { population_size: 30, generations: 40, tolerance_gap_cm: 2.0 },
+  options: { population_size: 30, generations: 40, tolerance_gap_cm: 0.0 },
   isRunning: false,
   progress: null,
   result: null,

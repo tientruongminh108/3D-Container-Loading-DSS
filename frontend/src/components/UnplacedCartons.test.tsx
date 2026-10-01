@@ -67,7 +67,7 @@ describe('Unplaced Cartons Result State (Section 6.3 - FE-13 to FE-16)', () => {
       expect(screen.getByText(/loading plan result/i)).toBeInTheDocument()
     })
 
-    const statTiles = screen.getAllByText(/cartons placed|fill rate|weight utilization/i)
+    const statTiles = screen.getAllByText(/cartons placed|fill rate|utilization|weight/i)
     expect(statTiles.length).toBeGreaterThan(0)
   })
 

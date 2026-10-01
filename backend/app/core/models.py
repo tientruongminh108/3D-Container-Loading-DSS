@@ -29,6 +29,7 @@ class RunStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class ItemBase(BaseModel):
@@ -138,7 +139,7 @@ class PackingListPreview(BaseModel):
 class RunOptions(BaseModel):
     population_size: int = Field(default=30, ge=10, le=200)
     generations: int = Field(default=40, ge=10, le=500)
-    tolerance_gap_cm: float = Field(default=2.0, ge=0.0, le=10.0)
+    tolerance_gap_cm: float = Field(default=0.0, ge=0.0, le=10.0)
     use_static_blocks: Optional[bool] = None
     group_key: Optional[str] = None
     ga_level: Optional[str] = None
@@ -247,6 +248,10 @@ class LoadMetrics(BaseModel):
     cog_z: float
     cog_deviation_xy: float
     cog_deviation_z: float
+    total_volume_cbm: Optional[float] = None
+    used_volume_cbm: Optional[float] = None
+    unused_volume_cbm: Optional[float] = None
+    planning_time_seconds: Optional[float] = None
 
 
 class UnplacedCarton(BaseModel):
@@ -274,6 +279,7 @@ class RunResult(BaseModel):
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
     options: Optional[RunOptions] = None
+    planning_time_seconds: Optional[float] = None
 
 
 class RunSummary(BaseModel):
@@ -288,6 +294,8 @@ class RunSummary(BaseModel):
     status: RunStatus
     created_at: datetime
     completed_at: Optional[datetime] = None
+    unused_cbm: Optional[float] = None
+    planning_time_seconds: Optional[float] = None
 
 
 class ValidationError(BaseModel):

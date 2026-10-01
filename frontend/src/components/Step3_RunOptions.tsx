@@ -9,7 +9,7 @@ interface Step3_RunOptionsProps {
 const DEFAULTS: Required<RunOptions> = {
   population_size: 30,
   generations: 40,
-  tolerance_gap_cm: 2.0,
+  tolerance_gap_cm: 0.0,
 }
 
 const LIMITS = {
@@ -171,7 +171,7 @@ export function Step3_RunOptions({ options, onChange }: Step3_RunOptionsProps) {
                 onChange={(event) => handleInputChange('tolerance_gap_cm', event.target.value)}
                 onBlur={() => handleBlur('tolerance_gap_cm')}
               />
-              <p className="text-xs text-slate-500">Clearance between boxes and walls (0–10 cm, default: 2.0)</p>
+              <p className="text-xs text-slate-500">Clearance between boxes and walls (0–10 cm, default: 0)</p>
             </div>
           </div>
         </div>

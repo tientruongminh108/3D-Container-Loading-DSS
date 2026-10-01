@@ -139,3 +139,8 @@ def test_find_best_placement_secondary_order(monkeypatch):
     )
     # Both have z=0, so smaller y wins
     assert res.position == Position(0.0, 20.0, 0.0)
+
+
+def test_fcl_wall_first_penalty_setting():
+    settings = get_settings()
+    assert 1.0 <= settings.WALL_FIRST_PENALTY <= 3.0

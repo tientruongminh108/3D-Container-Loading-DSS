@@ -62,7 +62,7 @@ def run_deterministic_mock_pack(
     W_max = float(container.max_weight_kg)
     container_vol = L * W * H if (L * W * H) > 0 else 1.0
 
-    gap = float(options.tolerance_gap_cm) if options and options.tolerance_gap_cm is not None else 0.5
+    gap = float(options.tolerance_gap_cm) if options and options.tolerance_gap_cm is not None else 0.0
 
     # Determine unique customers and customer sequences
     customer_codes: List[str] = []
@@ -250,6 +250,10 @@ def run_deterministic_mock_pack(
     else:
         cog_x, cog_y, cog_z = round(L / 2.0, 2), round(W / 2.0, 2), round(H / 2.0, 2)
 
+    total_cbm = round(container_vol / 1_000_000.0, 3)
+    used_cbm = round(used_vol / 1_000_000.0, 3)
+    unused_cbm = round(max(0.0, (container_vol - used_vol) / 1_000_000.0), 3)
+
     metrics = LoadMetrics(
         placed_count=len(placed_boxes),
         unplaced_count=len(unplaced_cartons),
@@ -263,6 +267,10 @@ def run_deterministic_mock_pack(
         cog_z=cog_z,
         cog_deviation_xy=0.0,
         cog_deviation_z=0.0,
+        total_volume_cbm=total_cbm,
+        used_volume_cbm=used_cbm,
+        unused_volume_cbm=unused_cbm,
+        planning_time_seconds=0.15,
     )
 
     # Construct Layer breakdowns
@@ -321,4 +329,5 @@ def run_deterministic_mock_pack(
         completed_at=datetime.now(timezone.utc),
         error_message=None,
         options=options,
+        planning_time_seconds=0.15,
     )

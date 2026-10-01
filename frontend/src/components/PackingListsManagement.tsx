@@ -12,7 +12,6 @@ interface PackingList {
   dateCreated: string
   shipmentType: 'FCL' | 'LCL'
   customerCount?: number
-  customerName: string
   totalSkus: number
   totalCartons: number
   status: 'Pending' | 'Done'
@@ -43,14 +42,13 @@ export function PackingListsManagement() {
     try {
       const lists = await packingListApi.list(0, 50)
       
-      // Persistent display IDs from database ID: PL-001, PL-002, PL-003...
+      // Use filename/name directly as ID so re-uploading the same file preserves the ID
       const mappedLists: PackingList[] = lists.map((pl) => ({
-        id: `PL-${String(pl.id).padStart(3, '0')}`,
+        id: pl.filename || pl.name || `PL-${String(pl.id).padStart(3, '0')}`,
         dbId: pl.id,
         dateCreated: pl.created_at,
         shipmentType: pl.shipment_type,
         customerCount: pl.customer_count,
-        customerName: pl.name || (pl.shipment_type === 'FCL' ? 'Customer A' : `Customer ${String.fromCharCode(65 + (pl.customer_count || 1))}`),
         totalSkus: (pl as any).rows?.length || (pl.total_cartons > 100 ? 15 : 5),
         totalCartons: pl.total_cartons,
         status: 'Pending',
@@ -116,7 +114,7 @@ export function PackingListsManagement() {
   const filteredLists = packingLists.filter((list) => {
     const matchesSearch =
       list.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      list.customerName.toLowerCase().includes(searchTerm.toLowerCase())
+      list.shipmentType.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchesStatus =
       statusFilter === 'all' || list.status.toLowerCase() === statusFilter.toLowerCase()
@@ -274,7 +272,7 @@ export function PackingListsManagement() {
             <input
               type="text"
               className="input"
-              placeholder="Search by PO, Customer..."
+              placeholder="Search by ID, filename..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -308,10 +306,9 @@ export function PackingListsManagement() {
                     aria-label="Select all visible packing lists"
                   />
                 </th>
-                <th style={{ width: '120px' }}>ID</th>
+                <th style={{ minWidth: '220px' }}>ID</th>
                 <th style={{ width: '140px' }}>Date Created</th>
-                <th style={{ minWidth: '200px' }}>Customer Name</th>
-                <th style={{ width: '160px' }}>Type</th>
+                <th style={{ width: '140px' }}>Type</th>
                 <th style={{ width: '100px' }}>SKUs</th>
                 <th style={{ width: '100px' }}>Cartons</th>
                 <th style={{ width: '140px' }}>Status</th>
@@ -321,7 +318,7 @@ export function PackingListsManagement() {
             <tbody>
               {filteredLists.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: 'center', padding: '32px', color: 'var(--color-text-muted)' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '32px', color: 'var(--color-text-muted)' }}>
                     No packing lists found
                   </td>
                 </tr>
@@ -337,9 +334,8 @@ export function PackingListsManagement() {
                         aria-label={`Select packing list ${list.id}`}
                       />
                     </td>
-                    <td className="font-mono text-sm">{list.id}</td>
+                    <td className="font-mono text-sm font-medium">{list.id}</td>
                     <td>{formatDate(list.dateCreated)}</td>
-                    <td>{list.customerName}</td>
                     <td>
                       <span className={`badge-inline ${list.shipmentType === 'FCL' ? 'badge-fcl-inline' : 'badge-lcl-inline'}`}>
                         {getShipmentTypeLabel(list)}

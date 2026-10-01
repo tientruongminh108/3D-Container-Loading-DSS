@@ -137,6 +137,7 @@ def find_best_placement(
     is_lcl: bool,
     extreme_points: List[ExtremePoint],
     last_customer_sequence: int = 0,
+    placed_postures: Optional[List[Posture]] = None,
 ) -> Tuple[Optional[PlacementResult], str]:
     """
     Find the best placement for a box.
@@ -216,7 +217,7 @@ def find_best_placement(
                 continue
 
             # Stackability check
-            if not check_stackability(candidate_bbox, placed_boxes, box, placed_boxes_data):
+            if not check_stackability(candidate_bbox, placed_boxes, box, placed_boxes_data, posture=posture, placed_postures=placed_postures):
                 continue
 
             # LIFO check for LCL
@@ -554,7 +555,7 @@ def place_blocks_greedy(
                         posture=posture,
                         dims=inflated_dims,
                         actual_dims=dims,
-                        box=block.boxes[0] if block.boxes else None,
+                        box=block,
                     ),
                     placed_bboxes,
                     [b for b in placed_blocks for _ in b.boxes],
@@ -680,6 +681,7 @@ def decode_chromosome(
                         current_weight,
                         max_weight,
                         is_lcl,
+                        placed_postures=placed_postures,
                     )
 
                     if valid:
@@ -726,6 +728,7 @@ def decode_chromosome(
                 is_lcl,
                 sorted_eps,
                 last_customer_sequence,
+                placed_postures=placed_postures,
             )
 
             if result:

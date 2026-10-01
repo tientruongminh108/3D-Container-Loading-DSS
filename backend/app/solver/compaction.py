@@ -20,6 +20,8 @@ def is_valid_shift(
     new_bbox: BoundingBox,
     current_bboxes: List[BoundingBox],
     min_support_ratio: float,
+    placed_data: Optional[List[Any]] = None,
+    placed_postures: Optional[List[Posture]] = None,
 ) -> bool:
     """Validate that moving box i to new_bbox preserves support constraints.
 
@@ -36,6 +38,16 @@ def is_valid_shift(
         if not check_support_ratio(new_bbox, current_bboxes, min_support_ratio):
             current_bboxes[i] = old_bbox
             return False
+        if placed_data is not None and i < len(placed_data):
+            unit_i = placed_data[i]
+            if hasattr(unit_i, "contents") and len(unit_i.contents) > 1:
+                posture_i = placed_postures[i] if (placed_postures and i < len(placed_postures)) else Posture.LWH
+                from app.solver.constraints import check_block_cartons_stackability
+                if not check_block_cartons_stackability(
+                    unit_i, new_bbox, posture_i, current_bboxes, placed_data, min_support_ratio, placed_postures=placed_postures
+                ):
+                    current_bboxes[i] = old_bbox
+                    return False
 
     # 2. Check if any box resting on old_bbox loses support
     for j, b_j in enumerate(current_bboxes):
@@ -44,6 +56,16 @@ def is_valid_shift(
                 if not check_support_ratio(b_j, current_bboxes, min_support_ratio):
                     current_bboxes[i] = old_bbox
                     return False
+                if placed_data is not None and j < len(placed_data):
+                    unit_j = placed_data[j]
+                    if hasattr(unit_j, "contents") and len(unit_j.contents) > 1:
+                        posture_j = placed_postures[j] if (placed_postures and j < len(placed_postures)) else Posture.LWH
+                        from app.solver.constraints import check_block_cartons_stackability
+                        if not check_block_cartons_stackability(
+                            unit_j, b_j, posture_j, current_bboxes, placed_data, min_support_ratio, placed_postures=placed_postures
+                        ):
+                            current_bboxes[i] = old_bbox
+                            return False
 
     current_bboxes[i] = old_bbox
     return True
@@ -88,6 +110,7 @@ def compact_x_rear(
     container_dims: Dimensions,
     is_lcl: bool = False,
     min_support_ratio: Optional[float] = None,
+    placed_postures: Optional[List[Posture]] = None,
 ) -> List[BoundingBox]:
     """Pass 1: X-axis (rear-wall) compaction.
 
@@ -135,7 +158,7 @@ def compact_x_rear(
                 b_i.max_z,
                 is_door_anchor=b_i.is_door_anchor,
             )
-            if (is_valid_shift(i, candidate, placed_bboxes, min_support_ratio)
+            if (is_valid_shift(i, candidate, placed_bboxes, min_support_ratio, placed_data=placed_data, placed_postures=placed_postures)
                     and _lifo_ok_after_move(i, candidate, placed_bboxes, placed_data, is_lcl)):
                 placed_bboxes[i] = candidate
 
@@ -148,6 +171,7 @@ def compact_y_sidewall(
     container_dims: Dimensions,
     is_lcl: bool = False,
     min_support_ratio: Optional[float] = None,
+    placed_postures: Optional[List[Posture]] = None,
 ) -> List[BoundingBox]:
     """Pass 2: Y-axis (side-wall) compaction.
 
@@ -194,7 +218,7 @@ def compact_y_sidewall(
                 b_i.max_z,
                 is_door_anchor=b_i.is_door_anchor,
             )
-            if (is_valid_shift(i, candidate, placed_bboxes, min_support_ratio)
+            if (is_valid_shift(i, candidate, placed_bboxes, min_support_ratio, placed_data=placed_data, placed_postures=placed_postures)
                     and _lifo_ok_after_move(i, candidate, placed_bboxes, placed_data, is_lcl)):
                 placed_bboxes[i] = candidate
 
@@ -207,6 +231,7 @@ def compact_z_downward(
     container_dims: Dimensions,
     is_lcl: bool = False,
     min_support_ratio: Optional[float] = None,
+    placed_postures: Optional[List[Posture]] = None,
 ) -> List[BoundingBox]:
     """Pass 3: Z-axis downward compaction (gravity drop).
 
@@ -267,7 +292,7 @@ def compact_z_downward(
                             valid = False
                             break
 
-            if (valid and is_valid_shift(i, candidate, placed_bboxes, min_support_ratio)
+            if (valid and is_valid_shift(i, candidate, placed_bboxes, min_support_ratio, placed_data=placed_data, placed_postures=placed_postures)
                     and _lifo_ok_after_move(i, candidate, placed_bboxes, placed_data, is_lcl)):
                 placed_bboxes[i] = candidate
 
@@ -346,6 +371,7 @@ def rescan_and_insert(
                 is_lcl=is_lcl,
                 extreme_points=elevated_eps,
                 last_customer_sequence=last_customer_sequence,
+                placed_postures=placed_postures,
             )
             if placement_res:
                 new_bbox = BoundingBox.from_position_and_dims(placement_res.position, placement_res.dims)
@@ -391,6 +417,7 @@ def rescan_and_insert(
                 is_lcl=is_lcl,
                 extreme_points=sorted_eps,
                 last_customer_sequence=last_customer_sequence,
+                placed_postures=placed_postures,
             )
             if placement_res:
                 new_bbox = BoundingBox.from_position_and_dims(placement_res.position, placement_res.dims)
@@ -438,6 +465,7 @@ def rescan_and_insert(
                 is_lcl=is_lcl,
                 extreme_points=sorted_eps,
                 last_customer_sequence=last_customer_sequence,
+                placed_postures=placed_postures,
             )
 
             if placement_res:
@@ -492,13 +520,13 @@ def run_compaction_pass(
     unplaced = list(unplaced)
 
     # 1. X compaction
-    placed_bboxes = compact_x_rear(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio)
+    placed_bboxes = compact_x_rear(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio, placed_postures=placed_postures)
 
     # 2. Y compaction
-    placed_bboxes = compact_y_sidewall(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio)
+    placed_bboxes = compact_y_sidewall(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio, placed_postures=placed_postures)
 
     # 3. Z compaction (downward / gravity settlement)
-    placed_bboxes = compact_z_downward(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio)
+    placed_bboxes = compact_z_downward(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio, placed_postures=placed_postures)
 
     # 4. Insertion re-scan
     placed_bboxes, placed_data, placed_postures, unplaced, current_weight = rescan_and_insert(

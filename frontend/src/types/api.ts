@@ -22,6 +22,7 @@ export enum RunStatus {
   RUNNING = 'running',
   COMPLETED = 'completed',
   FAILED = 'failed',
+  CANCELLED = 'cancelled',
 }
 
 export interface Item {
@@ -180,6 +181,10 @@ export interface LoadMetrics {
   cog_z: number
   cog_deviation_xy: number
   cog_deviation_z: number
+  total_volume_cbm?: number
+  used_volume_cbm?: number
+  unused_volume_cbm?: number
+  planning_time_seconds?: number
 }
 
 export interface UnplacedCarton {
@@ -207,6 +212,7 @@ export interface RunResult {
   completed_at?: string
   error_message?: string
   options?: RunOptions
+  planning_time_seconds?: number
 }
 
 export interface Layer {
@@ -242,6 +248,8 @@ export interface RunSummary {
   status: RunStatus
   created_at: string
   completed_at?: string
+  unused_cbm?: number
+  planning_time_seconds?: number
 }
 
 export interface ValidationError {

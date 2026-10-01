@@ -188,7 +188,7 @@ def get_pick_list(run_id: str, db: Session = Depends(get_db)):
 
 @router.delete("/runs/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_run(run_id: str, db: Session = Depends(get_db)):
-    """DELETE /runs/{run_id} - deletes a run record. Rejects in-progress runs with 409."""
+    """DELETE /runs/{run_id} - deletes a run record."""
     try:
         service = RunService(db)
         service.delete(run_id)
@@ -553,7 +553,7 @@ def list_packing_lists(skip: int = 0, limit: int = 100, db: Session = Depends(ge
 
 
 @router.get("/packing-lists/{packing_list_id}", response_model=PackingList)
-def get_packing_list(packing_list_id: int, db: Session = Depends(get_db)):
+def get_packing_list(packing_list_id: str, db: Session = Depends(get_db)):
     try:
         service = PackingListService(db)
         return service.get(packing_list_id)
@@ -562,7 +562,7 @@ def get_packing_list(packing_list_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/packing-lists/{packing_list_id}", response_model=PackingList)
-def update_packing_list(packing_list_id: int, packing_list: PackingListUpdate, db: Session = Depends(get_db)):
+def update_packing_list(packing_list_id: str, packing_list: PackingListUpdate, db: Session = Depends(get_db)):
     try:
         service = PackingListService(db)
         return service.update(packing_list_id, packing_list)
@@ -571,7 +571,7 @@ def update_packing_list(packing_list_id: int, packing_list: PackingListUpdate, d
 
 
 @router.delete("/packing-lists/{packing_list_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_packing_list(packing_list_id: int, db: Session = Depends(get_db)):
+def delete_packing_list(packing_list_id: str, db: Session = Depends(get_db)):
     try:
         service = PackingListService(db)
         service.delete(packing_list_id)
@@ -687,7 +687,7 @@ async def upload_and_save_packing_list_csv(file: UploadFile = File(...), db: Ses
                 # Save to database
                 pl_service = PackingListService(db)
                 pl_create = PackingListCreate(
-                    name=file.filename.replace('.csv', ''),
+                    name=file.filename,
                     filename=file.filename,
                     rows=[PackingListRow(**r) for r in rows],
                     total_cartons=validation.preview.total_cartons,

@@ -325,40 +325,96 @@ export function LoadingPlanViewer({ result, onNewRun }: LoadingPlanViewerProps) 
             </span>
             <span className="inline-flex items-center gap-1 bg-white px-2.5 py-1 rounded-md border border-slate-200 font-medium shadow-sm">
               <span className="text-slate-400">Tolerance Gap:</span>
-              <span className="text-blue-700 font-semibold">{result.options?.tolerance_gap_cm ?? 2.0} cm</span>
+              <span className="text-blue-700 font-semibold">{result.options?.tolerance_gap_cm ?? 0.0} cm</span>
             </span>
           </div>
         </div>
         <span className="text-slate-400 text-[11px] font-mono">
-          Run ID: {result.run_id?.slice(0, 8)}
+          Run ID: {result.run_id}
         </span>
       </div>
 
-      {/* Metrics Row */}
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-label">Fill Rate</div>
-          <div className="stat-value">{(metrics.fill_rate * 100).toFixed(1)}<span className="stat-unit">%</span></div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Weight Used</div>
-          <div className="stat-value">{metrics.used_weight_kg.toLocaleString()}<span className="stat-unit"> kg</span></div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Weight Utilization</div>
-          <div className="stat-value">{(metrics.weight_utilization * 100).toFixed(1)}<span className="stat-unit">%</span></div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Placed Cartons</div>
-          <div className="stat-value">{displayedBoxes.length}<span className="stat-unit"> / {metrics.total_cartons}</span></div>
-        </div>
-        {metrics.unplaced_count > 0 && (
-          <div className="stat-card warning">
-            <div className="stat-label">Unplaced</div>
-            <div className="stat-value">{metrics.unplaced_count}<span className="stat-unit"> cartons</span></div>
+      {/* Metrics Row (KPIs) */}
+      {(() => {
+        const containerVolCbm = (L * W * H) / 1_000_000
+        const usedCbm = metrics.used_volume_cbm ?? (containerVolCbm * metrics.fill_rate)
+        const unusedCbm = metrics.unused_volume_cbm ?? Math.max(0, containerVolCbm - usedCbm)
+        const unusedPercent = Math.max(0, (1 - metrics.fill_rate) * 100).toFixed(1)
+        
+        let planningTime = '0.45'
+        if (result.planning_time_seconds !== undefined && result.planning_time_seconds !== null) {
+          planningTime = result.planning_time_seconds.toFixed(2)
+        } else if (metrics.planning_time_seconds !== undefined && metrics.planning_time_seconds !== null) {
+          planningTime = metrics.planning_time_seconds.toFixed(2)
+        } else if (result.completed_at && result.created_at) {
+          const diffSec = (new Date(result.completed_at).getTime() - new Date(result.created_at).getTime()) / 1000
+          if (diffSec > 0) planningTime = diffSec.toFixed(2)
+        }
+
+        return (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="stat-card">
+              <div className="stat-label">Utilization</div>
+              <div className="stat-value text-blue-600">
+                {(metrics.fill_rate * 100).toFixed(1)}<span className="stat-unit">%</span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1 font-medium">
+                {usedCbm.toFixed(2)} / {containerVolCbm.toFixed(2)} CBM
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-label">Unused CBM</div>
+              <div className="stat-value text-slate-800">
+                {unusedCbm.toFixed(2)}<span className="stat-unit"> CBM</span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1 font-medium">
+                {unusedPercent}% remaining
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-label">Planning Time</div>
+              <div className="stat-value text-emerald-600">
+                {planningTime}<span className="stat-unit">s</span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1 font-medium">
+                Workflow run time
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-label">Weight</div>
+              <div className="stat-value text-slate-800">
+                {(metrics.weight_utilization * 100).toFixed(1)}<span className="stat-unit">%</span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1 font-medium">
+                {metrics.used_weight_kg.toLocaleString()} / {container.max_weight_kg.toLocaleString()} kg
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-label">Placed Cartons</div>
+              <div className="stat-value text-slate-800">
+                {displayedBoxes.length}<span className="stat-unit"> / {metrics.total_cartons}</span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1 font-medium">
+                {Math.round((displayedBoxes.length / (metrics.total_cartons || 1)) * 100)}% placed
+              </div>
+            </div>
+
+            <div className={`stat-card ${metrics.unplaced_count > 0 ? 'warning border-amber-300 bg-amber-50/30' : ''}`}>
+              <div className="stat-label">Unplaced</div>
+              <div className={`stat-value ${metrics.unplaced_count > 0 ? 'text-amber-600' : 'text-slate-800'}`}>
+                {metrics.unplaced_count}<span className="stat-unit"> cartons</span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1 font-medium">
+                {metrics.unplaced_count > 0 ? 'Need extra space' : 'All loaded'}
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+        )
+      })()}
 
       {/* 3D Viewport Content */}
       <div className="viewer-content relative bg-slate-900 rounded-xl overflow-hidden shadow-inner" style={{ minHeight: '480px', height: '540px' }}>

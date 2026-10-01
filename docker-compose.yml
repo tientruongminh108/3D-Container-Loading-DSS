@@ -9,7 +9,6 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
-      - ./backend/data:/app/data
     environment:
       - DATABASE_URL=sqlite:///./data/app.db
       - DEBUG=true

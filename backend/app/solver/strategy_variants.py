@@ -370,6 +370,78 @@ def enumerate_candidate_grids(
     return result
 
 
+def check_grid_cartons_stackability(
+    ep: Position,
+    nx: int,
+    ny: int,
+    dx_c: float,
+    dy_c: float,
+    c_act: Dimensions,
+    cand_unit_wt: float,
+    placed_grids: List[Any],
+    min_support_ratio: float = 0.60,
+) -> bool:
+    """Validate that every individual carton on the bottom layer of a candidate grid
+    will have sufficient physical support (>= min_support_ratio) and satisfy weight
+    hierarchy when placed on the top surfaces of existing placed grids.
+    """
+    if ep.z <= FLOOR_EPSILON:
+        return True
+
+    # Pre-extract physical top surfaces of placed cartons at ep.z
+    sup_surfaces = []
+    for p_placement, p_cartons, p_posture, p_nx, p_ny, p_nz, p_infl, p_ep in placed_grids:
+        if abs(p_placement.max_z - ep.z) <= FLOOR_EPSILON:
+            p_rep = p_cartons[0]
+            p_c_act = Dimensions(p_rep.length_cm, p_rep.width_cm, p_rep.height_cm).apply_posture(p_posture)
+            p_gap_x = max(0.0, p_rep.inflated_length - p_rep.length_cm)
+            p_gap_y = max(0.0, p_rep.inflated_width - p_rep.width_cm)
+            p_gap = max(p_gap_x, p_gap_y)
+            p_dx_c = p_c_act.length + p_gap
+            p_dy_c = p_c_act.width + p_gap
+            p_unit_wt = p_rep.weight_kg
+
+            for p_ix in range(p_nx):
+                for p_iy in range(p_ny):
+                    p_x1 = p_ep.x + p_ix * p_dx_c
+                    p_y1 = p_ep.y + p_iy * p_dy_c
+                    p_x2 = p_x1 + p_c_act.length
+                    p_y2 = p_y1 + p_c_act.width
+                    sup_surfaces.append((p_x1, p_x2, p_y1, p_y2, p_unit_wt))
+
+    if not sup_surfaces:
+        return False
+
+    c_footprint = c_act.length * c_act.width
+    if c_footprint <= 0:
+        return False
+    min_contact = c_footprint * min_support_ratio - 1e-4
+
+    # Check each carton on the bottom face (iz = 0) of the candidate grid
+    for ix in range(nx):
+        for iy in range(ny):
+            c_x1 = ep.x + ix * dx_c
+            c_y1 = ep.y + iy * dy_c
+            c_x2 = c_x1 + c_act.length
+            c_y2 = c_y1 + c_act.width
+
+            contact_area = 0.0
+            for p_x1, p_x2, p_y1, p_y2, p_unit_wt in sup_surfaces:
+                ox = min(c_x2, p_x2) - max(c_x1, p_x1)
+                if ox > 1e-4:
+                    oy = min(c_y2, p_y2) - max(c_y1, p_y1)
+                    if oy > 1e-4:
+                        if cand_unit_wt > p_unit_wt + 1e-3:
+                            return False
+                        contact_area += ox * oy
+                        if contact_area >= min_contact:
+                            break
+            if contact_area < min_contact:
+                return False
+
+    return True
+
+
 def decode_group_individual_dynamic(
     individual: GroupIndividual,
     groups: List[CartonGroup],
@@ -390,6 +462,7 @@ def decode_group_individual_dynamic(
     residual_wt = settings.RESIDUAL_VOLUME_WEIGHT
     c_vol = container_dims.volume()
     cL, cW, cH = container_dims.length, container_dims.width, container_dims.height
+    wall_penalty = getattr(settings, "WALL_FIRST_PENALTY", 2.0) if not is_lcl else 10.0
 
     placed_grids = []
     placed_grid_bboxes: List[BoundingBox] = []
@@ -425,6 +498,7 @@ def decode_group_individual_dynamic(
 
         while rem_in_lot:
             rem_count = len(rem_in_lot)
+            rep_box = rem_in_lot[0]
             sorted_eps = sort_extreme_points(extreme_points)[:30]
 
             best_placement = None
@@ -443,7 +517,13 @@ def decode_group_individual_dynamic(
 
                 for posture in postures_to_try:
                     c_act = Dimensions(rep_box.length_cm, rep_box.width_cm, rep_box.height_cm).apply_posture(posture)
-                    c_infl = Dimensions(rep_box.inflated_length, rep_box.inflated_width, rep_box.inflated_height).apply_posture(posture)
+                    # Container horizontal axes (X, Y) receive tolerance_gap padding;
+                    # Container vertical axis (Z) must NOT receive tolerance_gap padding
+                    # to prevent floating cartons and vertical height mismatches.
+                    gap_x = max(0.0, rep_box.inflated_length - rep_box.length_cm)
+                    gap_y = max(0.0, rep_box.inflated_width - rep_box.width_cm)
+                    gap = max(gap_x, gap_y)
+                    c_infl = Dimensions(c_act.length + gap, c_act.width + gap, c_act.height)
 
                     if not use_dynamic_blocks:
                         # Variant D: single carton placement only
@@ -479,6 +559,13 @@ def decode_group_individual_dynamic(
                         if not check_stackability(cand_bbox, placed_grid_bboxes, rep_box, placed_grid_data):
                             continue
 
+                        # Per-carton physical stackability check
+                        if not check_grid_cartons_stackability(
+                            ep, nx, ny, c_act.length + gap, c_act.width + gap,
+                            c_act, rep_box.weight_kg, placed_grids
+                        ):
+                            continue
+
                         # LIFO check for LCL
                         if is_lcl and not check_lifo(cand_bbox, placed_grid_bboxes, placed_grid_data, group.customer_sequence):
                             continue
@@ -511,9 +598,9 @@ def decode_group_individual_dynamic(
                             + residual_wt * res_score
                         )
 
-                        # Overrun calculation (Strict Wall-First Rule B)
+                        # Overrun calculation (Wall-First overrun penalty for FCL)
                         c_overrun = max(0.0, cand_bbox.max_x - front)
-                        effective_score = score - 10.0 * (c_overrun / cL)
+                        effective_score = score - wall_penalty * (c_overrun / cL)
 
                         if effective_score > best_score:
                             best_score = effective_score
@@ -553,9 +640,14 @@ def decode_group_individual_dynamic(
     placed_postures: List[Posture] = []
 
     for best_placement, cartons_to_place, chosen_posture, nx, ny, nz, g_infl, best_ep in placed_grids:
-        dx_c = g_infl.length / nx
-        dy_c = g_infl.width / ny
-        dz_c = g_infl.height / nz
+        rep_carton = cartons_to_place[0]
+        c_act = Dimensions(rep_carton.length_cm, rep_carton.width_cm, rep_carton.height_cm).apply_posture(chosen_posture)
+        gap_x = max(0.0, rep_carton.inflated_length - rep_carton.length_cm)
+        gap_y = max(0.0, rep_carton.inflated_width - rep_carton.width_cm)
+        gap = max(gap_x, gap_y)
+        dx_c = c_act.length + gap
+        dy_c = c_act.width + gap
+        dz_c = c_act.height
         c_idx = 0
         for ix in range(nx):
             for iy in range(ny):

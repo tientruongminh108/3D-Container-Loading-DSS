@@ -37,7 +37,7 @@ export function Dashboard() {
       setStats({
         totalRunsToday: todayRuns.length,
         avgFillRate: completedRuns.length > 0 
-          ? Math.round(completedRuns.reduce((sum, r) => sum + r.fill_rate, 0) / completedRuns.length * 100) / 100
+          ? Math.round(completedRuns.reduce((sum, r) => sum + (r.fill_rate || 0), 0) / completedRuns.length * 100) / 100
           : 0,
         totalVolumePlanned: completedRuns.reduce((sum, r) => sum + (r.total_cartons * 0.15), 0),
         pendingPackingLists: runs.filter(r => r.status === 'pending').length,
@@ -127,7 +127,7 @@ export function Dashboard() {
           <div className="text-3xl font-bold text-slate-900">{stats.totalRunsToday}</div>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-5 h-full">
-          <div className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Avg. Fill Rate</div>
+          <div className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Avg. Utilization</div>
           <div className="text-3xl font-bold text-green-700">{(stats.avgFillRate * 100).toFixed(1)}%</div>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-5 h-full">
@@ -161,7 +161,7 @@ export function Dashboard() {
                   <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Container</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Type</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Cartons</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Fill Rate</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Utilization</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Status</th>
                 </tr>
               </thead>
@@ -175,7 +175,9 @@ export function Dashboard() {
                 ) : (
                   recentRuns.map((run) => (
                     <tr key={run.run_id} className="border-t border-slate-100 hover:bg-slate-50">
-                      <td className="px-4 py-3 font-mono text-sm text-slate-700">{run.run_id.slice(0, 8)}...</td>
+                      <td className="px-4 py-3 font-mono text-sm text-slate-700">
+                        {run.run_id ? (run.run_id.length <= 16 ? run.run_id : `${run.run_id.slice(0, 8)}...`) : '—'}
+                      </td>
                       <td className="px-4 py-3 text-slate-600">{formatDate(run.created_at)}</td>
                       <td className="px-4 py-3 text-slate-700">{run.container_type}</td>
                       <td className="px-4 py-3">
@@ -187,12 +189,18 @@ export function Dashboard() {
                           {run.shipment_type}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{run.total_cartons}</td>
-                      <td className="px-4 py-3 text-slate-700">{(run.fill_rate * 100).toFixed(1)}%</td>
+                      <td className="px-4 py-3 text-slate-700">{run.total_cartons ?? 0}</td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {run.status === 'completed' && typeof run.fill_rate === 'number'
+                          ? `${(run.fill_rate * 100).toFixed(1)}%`
+                          : '—'}
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                           run.status === 'completed' ? 'bg-green-100 text-green-700' :
                           run.status === 'running' ? 'bg-amber-100 text-amber-700' :
+                          run.status === 'failed' ? 'bg-red-100 text-red-700' :
+                          run.status === 'cancelled' ? 'bg-slate-200 text-slate-700' :
                           'bg-slate-100 text-slate-700'
                         }`}>
                           {run.status}

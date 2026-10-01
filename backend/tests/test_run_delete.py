@@ -49,8 +49,8 @@ class TestRunDelete:
         resp = client.delete("/api/runs/nonexistent-uuid-12345")
         assert resp.status_code == 404
 
-    def test_delete_running_run_returns_409_conflict(self, db_session):
-        """Deleting an in-progress ('running') run is rejected with 409 Conflict."""
+    def test_delete_running_run_success(self, db_session):
+        """Deleting an in-progress or cancelled ('running') run succeeds with 204."""
         container = db_session.query(Container).first()
         if not container:
             container = Container(
@@ -75,5 +75,8 @@ class TestRunDelete:
         db_session.commit()
 
         resp = client.delete(f"/api/runs/{test_run_id}")
-        assert resp.status_code == 409
-        assert "Cannot delete an in-progress run" in resp.json()["detail"]
+        assert resp.status_code == 204
+
+        # Confirm 404 on subsequent get
+        get_resp = client.get(f"/api/runs/{test_run_id}")
+        assert get_resp.status_code == 404

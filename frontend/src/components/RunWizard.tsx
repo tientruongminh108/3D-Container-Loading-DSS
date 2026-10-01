@@ -214,7 +214,7 @@ function Step1PackingList({
                   <option value="" disabled>Loading...</option>
                 ) : savedLists.map((pl) => (
                   <option key={pl.id} value={String(pl.id)}>
-                    PL-{String(pl.id).padStart(3, '0')} - {pl.name} ({pl.total_cartons} cartons)
+                    {pl.filename ? (pl.name && pl.name !== pl.filename && !pl.filename.startsWith(pl.name) ? `${pl.filename} (${pl.name})` : pl.filename) : pl.name} ({pl.total_cartons} cartons)
                   </option>
                 ))}
               </select>
@@ -536,7 +536,7 @@ export function RunWizard() {
         options: {
           population_size: runOptions.population_size ?? 30,
           generations: runOptions.generations ?? 40,
-          tolerance_gap_cm: runOptions.tolerance_gap_cm ?? 2.0,
+          tolerance_gap_cm: runOptions.tolerance_gap_cm ?? 0.0,
         },
       }
 
@@ -556,7 +556,7 @@ export function RunWizard() {
       setRunError(msg)
       toastError(msg)
     } finally {
-      if (requestId === runRequestRef.current) {
+      if (requestId === runRequestRef.current && typeof window !== 'undefined') {
         setIsLoading(false)
         setRunning(false)
         setProgress(null)
@@ -570,8 +570,8 @@ export function RunWizard() {
     setIsLoading(false)
     setRunning(false)
     setProgress(null)
-    toastError('Run cancellation is unavailable after submission; the request will continue on the server')
-  }, [setProgress, setRunning, toastError])
+    toastSuccess('Optimization cancelled')
+  }, [setProgress, setRunning, toastSuccess])
 
   const handleNewRun = useCallback(() => {
     cancelledRef.current = true

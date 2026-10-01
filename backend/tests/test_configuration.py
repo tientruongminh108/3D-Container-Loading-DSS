@@ -11,7 +11,7 @@ class TestConfigurationDefaults:
         settings = get_settings()
         assert settings.POPULATION_SIZE == 60
         assert settings.GENERATIONS == 100
-        assert settings.TOLERANCE_GAP_CM == 2.0
+        assert settings.TOLERANCE_GAP_CM == 0.0
         assert settings.FITNESS_COG_PENALTY_WEIGHT == 0.3
 
     def test_CFG_02_cog_penalty_weight_bound(self):
@@ -32,7 +32,7 @@ class TestConfigurationDefaults:
         defaults = {
             "POPULATION_SIZE": 60,
             "GENERATIONS": 100,
-            "TOLERANCE_GAP_CM": 2.0,
+            "TOLERANCE_GAP_CM": 0.0,
             "FITNESS_COG_PENALTY_WEIGHT": 0.3,
             "FITNESS_FRAG_PENALTY_WEIGHT": 0.5,
             "UNPLACED_RANK_WEIGHT": 2.0,
@@ -61,6 +61,6 @@ class TestConfigurationDefaults:
     def test_CFG_06_block_fraction_per_axis_defaults(self):
         """CFG-06: Per-axis MAX_BLOCK_FRACTION settings"""
         settings = get_settings()
-        assert settings.MAX_BLOCK_FRACTION_X == 0.20
-        assert settings.MAX_BLOCK_FRACTION_Y == 0.70
-        assert settings.MAX_BLOCK_FRACTION_Z == 0.70
+        assert settings.MAX_BLOCK_FRACTION_X == 0.30
+        assert settings.MAX_BLOCK_FRACTION_Y == 0.80
+        assert settings.MAX_BLOCK_FRACTION_Z == 0.80

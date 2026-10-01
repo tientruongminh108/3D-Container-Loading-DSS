@@ -62,7 +62,7 @@ describe('RunHistory Component', () => {
     window.confirm = vi.fn().mockReturnValue(true)
   })
 
-  it('renders runs and displays disabled delete controls for running runs', async () => {
+  it('renders runs and displays enabled delete controls for all runs including running runs', async () => {
     runApi.list = vi.fn().mockResolvedValue(mockRuns)
 
     renderWithRouter(<RunHistory />)
@@ -80,8 +80,7 @@ describe('RunHistory Component', () => {
     expect(completedCheckbox.disabled).toBe(false)
 
     expect(runningCheckbox).toBeInTheDocument()
-    expect(runningCheckbox.disabled).toBe(true)
-    expect(runningCheckbox.getAttribute('title')).toBe('Cannot delete an active run')
+    expect(runningCheckbox.disabled).toBe(false)
 
     expect(failedCheckbox).toBeInTheDocument()
     expect(failedCheckbox.disabled).toBe(false)
@@ -91,8 +90,7 @@ describe('RunHistory Component', () => {
     const deleteRunningBtn = screen.getByLabelText('Delete run run-running-abcdefgh') as HTMLButtonElement
 
     expect(deleteCompletedBtn.disabled).toBe(false)
-    expect(deleteRunningBtn.disabled).toBe(true)
-    expect(deleteRunningBtn.getAttribute('title')).toBe('Cannot delete an active run')
+    expect(deleteRunningBtn.disabled).toBe(false)
   })
 
   it('performs single run delete when confirmed', async () => {
@@ -114,7 +112,7 @@ describe('RunHistory Component', () => {
     })
   })
 
-  it('performs bulk delete for selected completed/failed runs', async () => {
+  it('performs bulk delete for selected runs including running and failed runs', async () => {
     runApi.list = vi.fn().mockResolvedValue(mockRuns)
     runApi.delete = vi.fn().mockResolvedValue({})
 
@@ -124,21 +122,22 @@ describe('RunHistory Component', () => {
       expect(screen.getByText('run-comp...')).toBeInTheDocument()
     })
 
-    // Click "Select all completed runs"
-    const selectAllCheckbox = screen.getByLabelText('Select all completed runs')
+    // Click "Select all runs"
+    const selectAllCheckbox = screen.getByLabelText('Select all runs')
     fireEvent.click(selectAllCheckbox)
 
-    // Verify bulk delete banner appears with count 2 (running run excluded)
+    // Verify bulk delete banner appears with count 3
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Delete Selected \(2\)/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Delete Selected \(3\)/i })).toBeInTheDocument()
     })
 
-    const bulkDeleteBtn = screen.getByRole('button', { name: /Delete Selected \(2\)/i })
+    const bulkDeleteBtn = screen.getByRole('button', { name: /Delete Selected \(3\)/i })
     fireEvent.click(bulkDeleteBtn)
 
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('2 selected runs'))
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('3 selected runs'))
     await waitFor(() => {
       expect(runApi.delete).toHaveBeenCalledWith('run-completed-12345678')
+      expect(runApi.delete).toHaveBeenCalledWith('run-running-abcdefgh')
       expect(runApi.delete).toHaveBeenCalledWith('run-failed-98765432')
     })
   })

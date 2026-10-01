@@ -66,6 +66,37 @@ class Position:
     z: float
 
 
+def transform_position_by_posture(
+    pos: Position, posture: Posture, block_dims: Optional[Dimensions] = None
+) -> Position:
+    """Transform a position from block-local coordinates to world coordinates
+    given the block's posture. The block's origin corner is at (0,0,0) in its
+    local coordinate system.
+
+    Posture mapping (per Table 1 / Dimensions.apply_posture):
+      1. LWH: (x, y, z)
+      2. WLH: (y, x, z)
+      3. HLW: (z, x, y)
+      4. HWL: (z, y, x)
+      5. LHW: (x, z, y)
+      6. WHL: (y, z, x)
+    """
+    x, y, z = pos.x, pos.y, pos.z
+    if posture == Posture.LWH:
+        return Position(x, y, z)
+    elif posture == Posture.WLH:
+        return Position(y, x, z)
+    elif posture == Posture.HLW:
+        return Position(z, x, y)
+    elif posture == Posture.HWL:
+        return Position(z, y, x)
+    elif posture == Posture.LHW:
+        return Position(x, z, y)
+    elif posture == Posture.WHL:
+        return Position(y, z, x)
+    return Position(x, y, z)
+
+
 @dataclass
 class BoundingBox:
     min_x: float

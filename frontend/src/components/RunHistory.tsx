@@ -9,16 +9,20 @@ export function RunHistory() {
   const navigate = useNavigate()
   const [runs, setRuns] = useState<RunSummary[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
   const { success: toastSuccess, error: toastError } = useToastStore()
 
   const loadRuns = async () => {
+    setLoading(true)
+    setError(null)
     try {
       const data = await runApi.list()
       setRuns(data)
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load runs', err)
+      setError(err?.response?.data?.detail || err?.message || 'Failed to load runs')
     } finally {
       setLoading(false)
     }
@@ -28,7 +32,7 @@ export function RunHistory() {
     loadRuns()
   }, [])
 
-  const selectableRuns = runs.filter((r) => r.status !== 'running')
+  const selectableRuns = runs
   const allSelectableSelected = selectableRuns.length > 0 && selectableRuns.every((r) => selectedIds.has(r.run_id))
   const someSelectableSelected = selectableRuns.some((r) => selectedIds.has(r.run_id)) && !allSelectableSelected
 
@@ -53,12 +57,12 @@ export function RunHistory() {
   }
 
   const handleDelete = async (runId: string) => {
-    const shortId = runId.slice(0, 8)
+    const shortId = runId.length <= 16 ? runId : `${runId.slice(0, 8)}...`
     if (!window.confirm(`Delete run ${shortId}...?`)) return
     try {
       setDeleting(true)
       await runApi.delete(runId)
-      toastSuccess(`Deleted run ${shortId}...`)
+      toastSuccess(`Deleted run ${shortId}`)
       setSelectedIds((prev) => {
         if (prev.has(runId)) {
           const next = new Set(prev)
@@ -140,6 +144,22 @@ export function RunHistory() {
         </div>
       </header>
 
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <span>{error}</span>
+          </div>
+          <button onClick={loadRuns} className="btn btn-secondary btn-sm">
+            Retry
+          </button>
+        </div>
+      )}
+
       {selectedIds.size > 0 && (
         <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-950">
           <div className="flex items-center gap-2">
@@ -171,7 +191,7 @@ export function RunHistory() {
         </div>
       )}
 
-      {runs.length === 0 ? (
+      {runs.length === 0 && !error ? (
         <div className="flex flex-col items-center justify-center p-12 bg-white border border-slate-200 rounded-xl">
           <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4 text-slate-400">
             <Icons.Clock />
@@ -184,7 +204,7 @@ export function RunHistory() {
             <Icons.Play /> Create New Run
           </NavLink>
         </div>
-      ) : (
+      ) : runs.length > 0 ? (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">
@@ -200,7 +220,7 @@ export function RunHistory() {
                         if (el) el.indeterminate = someSelectableSelected
                       }}
                       onChange={handleSelectAll}
-                      aria-label="Select all completed runs"
+                      aria-label="Select all runs"
                     />
                   </th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Run ID</th>
@@ -208,7 +228,8 @@ export function RunHistory() {
                   <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Type</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Cartons</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Placed</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Fill Rate</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Utilization</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Planning Time</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Status</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Created</th>
                   <th className="px-4 py-3 text-right font-semibold text-slate-600 uppercase tracking-wider text-xs">Action</th>
@@ -226,51 +247,60 @@ export function RunHistory() {
                     <td className="px-4 py-3 text-center w-10" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
-                        className="rounded border-slate-300 text-blue-600 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                        disabled={run.status === 'running'}
-                        title={run.status === 'running' ? 'Cannot delete an active run' : `Select run ${run.run_id.slice(0, 8)}`}
+                        className="rounded border-slate-300 text-blue-600 cursor-pointer"
+                        title={`Select run ${run.run_id}`}
                         checked={selectedIds.has(run.run_id)}
                         onChange={() => handleToggleSelect(run.run_id)}
                         aria-label={`Select run ${run.run_id}`}
                       />
                     </td>
-                    <td className="px-4 py-3 font-mono text-sm font-medium text-blue-600">{run.run_id.slice(0, 8)}...</td>
-                    <td className="px-4 py-3 text-slate-700">{run.container_type}</td>
+                    <td className="px-4 py-3 font-mono text-sm font-medium text-blue-600">
+                      {run.run_id ? (run.run_id.length <= 16 ? run.run_id : `${run.run_id.slice(0, 8)}...`) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">{run.container_type || '—'}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                         run.shipment_type === 'FCL' 
                           ? 'bg-green-100 text-green-700' 
                           : 'bg-amber-100 text-amber-700'
                       }`}>
-                        {run.shipment_type}
+                        {run.shipment_type || 'FCL'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{run.total_cartons}</td>
-                    <td className="px-4 py-3 text-slate-700">{run.placed_count}</td>
-                    <td className="px-4 py-3 text-slate-700">{(run.fill_rate * 100).toFixed(1)}%</td>
+                    <td className="px-4 py-3 text-slate-700">{run.total_cartons ?? 0}</td>
+                    <td className="px-4 py-3 text-slate-700">{run.placed_count ?? 0}</td>
+                    <td className="px-4 py-3 text-slate-700 font-semibold text-blue-700">
+                      {run.status === 'completed' && typeof run.fill_rate === 'number'
+                        ? `${(run.fill_rate * 100).toFixed(1)}%`
+                        : run.status === 'completed' ? '0.0%' : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {typeof run.planning_time_seconds === 'number' ? `${run.planning_time_seconds.toFixed(2)}s` : '—'}
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                         run.status === 'completed' ? 'bg-green-100 text-green-700' :
                         run.status === 'running' ? 'bg-amber-100 text-amber-700' :
                         run.status === 'failed' ? 'bg-red-100 text-red-700' :
+                        run.status === 'cancelled' ? 'bg-slate-200 text-slate-700' :
                         'bg-slate-100 text-slate-700'
                       }`}>
                         {run.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{new Date(run.created_at).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-slate-600">{run.created_at ? new Date(run.created_at).toLocaleString() : '—'}</td>
                     <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="inline-flex items-center justify-end gap-2">
                         <NavLink
                           to={`/history/${run.run_id}`}
                           className="btn btn-outline btn-xs inline-flex items-center gap-1 font-medium text-blue-600 hover:bg-blue-600 hover:text-white"
                         >
-                          View Plan &rarr;
+                          {run.status === 'completed' ? 'View Plan →' : 'Details →'}
                         </NavLink>
                         <button
                           type="button"
-                          disabled={run.status === 'running' || deleting}
-                          title={run.status === 'running' ? 'Cannot delete an active run' : 'Delete run'}
+                          disabled={deleting}
+                          title="Delete run"
                           onClick={() => handleDelete(run.run_id)}
                           className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 disabled:cursor-not-allowed"
                           aria-label={`Delete run ${run.run_id}`}
@@ -288,7 +318,7 @@ export function RunHistory() {
             </table>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

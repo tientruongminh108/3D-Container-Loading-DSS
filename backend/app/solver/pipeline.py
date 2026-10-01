@@ -7,6 +7,7 @@ from app.solver.block_generation import build_blocks, Block
 from app.solver.ga import genetic_algorithm, Individual
 from app.solver.placement import decode_chromosome, place_blocks_greedy
 from app.solver.output import build_run_result
+import time
 from app.solver.geometry import Dimensions, BoundingBox
 from app.core.models import RunResult, RunStatus
 
@@ -30,6 +31,7 @@ def run_pipeline(
     options=None,
     progress_callback: Callable[[str, float, dict], None] = None,
 ) -> PipelineResult:
+    start_time = time.perf_counter()
     settings = get_settings()
 
     pop_size = options.population_size if options else settings.POPULATION_SIZE
@@ -369,6 +371,8 @@ def run_pipeline(
     final_unplaced_blocks = [u for u, _ in unplaced if isinstance(u, Block)]
     final_unplaced_boxes = [u for u, _ in unplaced if not isinstance(u, Block)]
 
+    planning_time_sec = round(time.perf_counter() - start_time, 2)
+
     result = build_run_result(
         individual=best_individual,
         container_dims=container_dims,
@@ -384,6 +388,7 @@ def run_pipeline(
         placed_postures=placed_postures,
         status=RunStatus.COMPLETED.value,
         options=options,
+        planning_time_seconds=planning_time_sec,
     )
 
     if progress_callback:

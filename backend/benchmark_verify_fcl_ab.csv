@@ -1,0 +1,11 @@
+run_id,dataset,budget,variant,seed,wall_clock_sec,physical_fill_pct,placed_count,unplaced_count,unplaced_weight_kg,max_height_cm,top_surface_height_std,cog_dev_xy,cog_dev_z,lifo_violations,validator_violations,is_valid,ga_units_count,peak_memory_mb
+e1c1e8ff-9d92-40cb-a0ed-a9512f724386,03,interactive,A,1,93.703,65.4,50,20,1356.8,260.0,33.85,0.0158,0.1039,0,0,True,17,0.84
+9d3a1047-8afb-44e5-8119-74ada8562634,03,interactive,A,2,94.385,70.618,54,16,1085.44,260.0,31.75,0.0121,0.0665,0,0,True,17,0.76
+0222ddd7-5338-4407-9bd0-e53ea1d2d15f,03,interactive,A,3,65.11,65.411,50,20,1356.8,260.0,37.48,0.0216,0.0996,0,0,True,17,0.65
+07fcd331-00ea-4a76-b019-cd854a5d09fb,03,interactive,A,4,69.373,70.618,54,16,1085.44,260.0,39.37,0.0199,0.0833,0,0,True,17,0.73
+39453a5b-eda0-4031-b8f3-5ca7743b37f1,03,interactive,A,5,74.437,65.39,50,20,1356.8,260.0,34.59,0.0124,0.0981,0,0,True,17,0.77
+aa020c48-c287-4d19-9000-84a20e42a645,03,interactive,B,1,77.112,75.81,58,12,814.08,260.0,27.69,0.0125,0.0506,0,0,True,0,0.94
+797be551-cfca-42cf-8ef3-67d6b4ede569,03,interactive,B,2,77.68,70.618,54,16,1085.44,260.0,31.75,0.0121,0.0665,0,0,True,0,0.85
+a3916999-de78-452a-b48a-faf88e81eb35,03,interactive,B,3,75.578,73.216,56,14,949.76,260.0,21.41,0.0354,0.0564,0,0,True,0,0.81
+66979c4c-2f3b-4feb-9ff4-b06f69908437,03,interactive,B,5,58.686,78.403,60,10,678.4,265.0,9.64,0.0103,0.0332,0,0,True,0,0.82
+11f58311-5f93-4246-b8b4-ab42f66778b2,03,interactive,B,4,64.528,70.618,54,16,1085.44,260.0,39.37,0.0215,0.0833,0,0,True,0,0.78

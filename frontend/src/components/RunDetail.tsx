@@ -40,7 +40,7 @@ export function RunDetail() {
     return (
       <div className="flex flex-col items-center justify-center h-80 space-y-4">
         <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-        <p className="text-slate-500 text-sm">Loading plan details for {runId?.slice(0, 8)}...</p>
+        <p className="text-slate-500 text-sm">Loading plan details for {runId && runId.length <= 16 ? runId : `${runId?.slice(0, 8)}...`}...</p>
       </div>
     )
   }
@@ -93,8 +93,74 @@ export function RunDetail() {
             <button onClick={() => runId && fetchRun(runId)} className="btn btn-primary btn-sm">
               Refresh Status
             </button>
+            <button
+              onClick={async () => {
+                const shortId = runId && runId.length <= 16 ? runId : `${runId?.slice(0, 8)}...`
+                if (window.confirm(`Delete run ${shortId}?`)) {
+                  try {
+                    await runApi.delete(runId!)
+                    navigate('/history')
+                  } catch (err: any) {
+                    setError(err.message || 'Failed to delete run')
+                  }
+                }
+              }}
+              className="btn btn-secondary btn-sm text-red-600 hover:bg-red-50 hover:border-red-200"
+            >
+              Delete Run
+            </button>
             <NavLink to="/history" className="btn btn-outline btn-sm">
               View History
+            </NavLink>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (result.status === 'cancelled') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-2">
+          <NavLink to="/history" className="btn btn-outline btn-sm flex items-center gap-1.5">
+            <Icons.ChevronLeft /> Back to Run History
+          </NavLink>
+        </div>
+
+        <div className="p-8 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 space-y-4 text-center">
+          <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center mx-auto text-slate-600">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="15" y1="9" x2="9" y2="15"></line>
+              <line x1="9" y1="9" x2="15" y2="15"></line>
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold text-slate-900">Run Cancelled</h2>
+          <p className="text-sm text-slate-600 max-w-md mx-auto">
+            This loading plan run was cancelled before completion. No 3D loading plan is available.
+          </p>
+          <div className="flex justify-center gap-3">
+            <NavLink to="/new-run" className="btn btn-primary btn-sm flex items-center gap-1.5">
+              <Icons.Play /> Create New Run
+            </NavLink>
+            <button
+              onClick={async () => {
+                const shortId = runId && runId.length <= 16 ? runId : `${runId?.slice(0, 8)}...`
+                if (window.confirm(`Delete run ${shortId}?`)) {
+                  try {
+                    await runApi.delete(runId!)
+                    navigate('/history')
+                  } catch (err: any) {
+                    setError(err.message || 'Failed to delete run')
+                  }
+                }
+              }}
+              className="btn btn-secondary btn-sm text-red-600 hover:bg-red-50 hover:border-red-200"
+            >
+              Delete Run
+            </button>
+            <NavLink to="/history" className="btn btn-outline btn-sm">
+              Back to History
             </NavLink>
           </div>
         </div>
@@ -126,7 +192,9 @@ export function RunDetail() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-3 rounded-lg border border-red-100 text-xs">
             <div>
               <span className="text-slate-500 block">Run ID</span>
-              <span className="font-mono font-medium">{result.run_id.slice(0, 8)}...</span>
+              <span className="font-mono font-medium">
+                {result.run_id && result.run_id.length <= 16 ? result.run_id : `${result.run_id.slice(0, 8)}...`}
+              </span>
             </div>
             <div>
               <span className="text-slate-500 block">Container</span>
@@ -145,6 +213,22 @@ export function RunDetail() {
             <NavLink to="/new-run" className="btn btn-primary btn-sm flex items-center gap-1.5">
               <Icons.Play /> Create New Run
             </NavLink>
+            <button
+              onClick={async () => {
+                const shortId = runId && runId.length <= 16 ? runId : `${runId?.slice(0, 8)}...`
+                if (window.confirm(`Delete run ${shortId}?`)) {
+                  try {
+                    await runApi.delete(runId!)
+                    navigate('/history')
+                  } catch (err: any) {
+                    setError(err.message || 'Failed to delete run')
+                  }
+                }
+              }}
+              className="btn btn-secondary btn-sm text-red-600 hover:bg-red-50 hover:border-red-200"
+            >
+              Delete Run
+            </button>
             <NavLink to="/history" className="btn btn-outline btn-sm">
               Back to History
             </NavLink>
@@ -166,7 +250,7 @@ export function RunDetail() {
               Run: {result.run_id}
             </span>
             <span className="text-xs text-slate-500">
-              {new Date(result.created_at).toLocaleString()}
+              {result.created_at ? new Date(result.created_at).toLocaleString() : '—'}
             </span>
           </div>
         </div>
@@ -177,10 +261,16 @@ export function RunDetail() {
         </div>
       </div>
 
-      <LoadingPlanViewer
-        result={result}
-        onNewRun={() => navigate('/new-run')}
-      />
+      {result.metrics ? (
+        <LoadingPlanViewer
+          result={result}
+          onNewRun={() => navigate('/new-run')}
+        />
+      ) : (
+        <div className="p-8 bg-slate-50 border border-slate-200 rounded-xl text-center text-slate-500">
+          No loading plan metrics available for this run.
+        </div>
+      )}
     </div>
   )
 }

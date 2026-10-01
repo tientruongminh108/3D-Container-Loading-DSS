@@ -1,0 +1,6 @@
+run_id,dataset,budget,variant,seed,wall_clock_sec,physical_fill_pct,placed_count,unplaced_count,unplaced_weight_kg,max_height_cm,top_surface_height_std,cog_dev_xy,cog_dev_z,lifo_violations,validator_violations,is_valid,ga_units_count,peak_memory_mb
+95bfe79b-5566-4269-b5fc-7b6827952cf5,01,interactive,E,3,772.041,50.125,99,53,2681.8,269.0,29.53,0.0781,0.0363,0,0,True,30,1.74
+bbe3e107-d9bd-4ac4-80dd-fb8942f5b8a5,01,interactive,E,1,774.142,50.755,102,50,2766.0,265.0,24.22,0.0698,0.0675,0,1,False,30,1.78
+4d3abcb2-e605-463e-8321-9a52957985cb,01,interactive,E,2,779.8,52.159,105,47,2861.0,268.0,41.92,0.0287,0.0814,0,0,True,30,1.89
+8a9d81e1-6989-4cb3-9b4a-577349f5e558,01,interactive,E,4,808.593,52.514,108,44,2520.0,265.0,45.73,0.0719,0.0754,0,1,False,30,1.83
+2a2d2879-46c7-4727-9feb-0cbcfc4f720f,01,interactive,E,5,617.147,47.286,100,52,3151.0,269.0,48.18,0.0397,0.06,0,0,True,30,1.6

@@ -1,10 +1,11 @@
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Union
 from datetime import datetime
 import json
 import uuid
 import time
 import random
+import re
 import pandas as pd
 from io import StringIO
 
@@ -358,16 +359,45 @@ class RunService:
 
     def generate_run_id(self) -> str:
         """Generate a clean, standardized, human-readable Run ID.
-        Format: RUN-YYYYMMDD-NNN (e.g. RUN-20260930-001)
+        Format: DDMMYY-yxx (e.g. 011026-A01, 011026-A99, 011026-B01)
+        - DD: 2-digit day
+        - MM: 2-digit month
+        - YY: 2-digit year (last 2 digits)
+        - y: uppercase alphabet letter (A..Z)
+        - xx: 2-digit sequence number (01..99). When xx reaches 99, rolls over to next letter and 01.
         """
-        today_str = datetime.utcnow().strftime("%Y%m%d")
-        prefix = f"RUN-{today_str}-"
-        count = self.db.query(Run).filter(Run.run_id.like(f"{prefix}%")).count()
-        candidate_id = f"{prefix}{count + 1:03d}"
-        while self.db.query(Run).filter(Run.run_id == candidate_id).first():
-            count += 1
-            candidate_id = f"{prefix}{count + 1:03d}"
-        return candidate_id
+        date_str = datetime.now().strftime("%d%m%y")
+        prefix = f"{date_str}-"
+
+        existing_runs = self.db.query(Run.run_id).filter(Run.run_id.like(f"{prefix}%")).all()
+        existing_ids = {r[0] for r in existing_runs}
+
+        max_seq = 0
+        pattern = re.compile(rf"^{re.escape(date_str)}-([A-Za-z])(\d{{2}})$")
+        for rid in existing_ids:
+            match = pattern.match(rid)
+            if match:
+                letter_char = match.group(1).upper()
+                num = int(match.group(2))
+                letter_idx = ord(letter_char) - ord('A')
+                seq = letter_idx * 99 + num
+                if seq > max_seq:
+                    max_seq = seq
+
+        seq = max(1, max_seq + 1)
+        while True:
+            letter_idx = (seq - 1) // 99
+            num = ((seq - 1) % 99) + 1
+            if letter_idx < 26:
+                letter = chr(ord('A') + letter_idx)
+            else:
+                first = chr(ord('A') + (letter_idx // 26) - 1)
+                second = chr(ord('A') + (letter_idx % 26))
+                letter = f"{first}{second}"
+            candidate_id = f"{prefix}{letter}{num:02d}"
+            if candidate_id not in existing_ids:
+                return candidate_id
+            seq += 1
 
     def create_run(self, run_create: RunCreate, progress_callback=None) -> RunResult:
         container = self.container_service.get(run_create.container_id)
@@ -388,6 +418,7 @@ class RunService:
         self.db.add(db_run)
         self.db.commit()
 
+        workflow_start = time.perf_counter()
         try:
             if progress_callback:
                 progress_callback(10, "Fetching item specifications...")
@@ -464,6 +495,8 @@ class RunService:
                 run_result.run_id = run_id
                 run_result.container.id = container.id
                 run_result.options = run_create.options
+                if not run_result.planning_time_seconds:
+                    run_result.planning_time_seconds = round(time.perf_counter() - workflow_start, 2)
             except Exception as solver_err:
                 print(f"Warning: mathematical solver failed ({solver_err}), falling back to deterministic packer")
                 run_result = run_deterministic_mock_pack(
@@ -474,7 +507,11 @@ class RunService:
                     run_id=run_id,
                 )
                 run_result.options = run_create.options
-            
+                run_result.planning_time_seconds = round(time.perf_counter() - workflow_start, 2)
+
+            if run_result.metrics and not run_result.metrics.planning_time_seconds:
+                run_result.metrics.planning_time_seconds = run_result.planning_time_seconds
+
             db_run.status = RunStatus.COMPLETED.value
             db_run.result_json = run_result.model_dump_json()
             db_run.completed_at = datetime.utcnow()
@@ -566,6 +603,16 @@ class RunService:
                     summary.unplaced_count = result.metrics.unplaced_count
                     summary.fill_rate = result.metrics.fill_rate
 
+                    # Unused CBM and planning time
+                    cont_cbm = (container.internal_length_cm * container.internal_width_cm * container.internal_height_cm) / 1_000_000.0
+                    summary.unused_cbm = round(max(0.0, cont_cbm * (1.0 - summary.fill_rate)), 2)
+                    if getattr(result, "planning_time_seconds", None):
+                        summary.planning_time_seconds = result.planning_time_seconds
+                    elif getattr(result.metrics, "planning_time_seconds", None):
+                        summary.planning_time_seconds = result.metrics.planning_time_seconds
+                    elif result.completed_at and result.created_at:
+                        summary.planning_time_seconds = round((result.completed_at - result.created_at).total_seconds(), 2)
+
                     # Fallback customer count from boxes if packing_list_json was missing
                     if summary.customer_count == 0:
                         cust_codes = {b.customer_code for b in result.placed_boxes if getattr(b, 'customer_code', None)}
@@ -603,8 +650,6 @@ class RunService:
         db_run = self.db.query(Run).filter(Run.run_id == run_id).first()
         if not db_run:
             raise NotFoundError("Run", run_id)
-        if db_run.status == RunStatus.RUNNING.value:
-            raise ConflictError("Cannot delete an in-progress run. Please wait for it to complete.")
         self.db.delete(db_run)
         self.db.commit()
 
@@ -636,13 +681,18 @@ class PackingListService:
         self.db.refresh(db_packing_list)
         return self._to_pydantic(db_packing_list)
 
-    def get_model(self, packing_list_id: int) -> DBPackingList:
-        db_packing_list = self.db.query(DBPackingList).filter(DBPackingList.id == packing_list_id).first()
+    def get_model(self, packing_list_id: Union[int, str]) -> DBPackingList:
+        if isinstance(packing_list_id, int) or (isinstance(packing_list_id, str) and str(packing_list_id).isdigit()):
+            db_packing_list = self.db.query(DBPackingList).filter(DBPackingList.id == int(packing_list_id)).first()
+        else:
+            db_packing_list = self.db.query(DBPackingList).filter(
+                (DBPackingList.filename == str(packing_list_id)) | (DBPackingList.name == str(packing_list_id))
+            ).first()
         if not db_packing_list:
             raise NotFoundError("PackingList", str(packing_list_id))
         return db_packing_list
 
-    def get(self, packing_list_id: int) -> PydanticPackingList:
+    def get(self, packing_list_id: Union[int, str]) -> PydanticPackingList:
         db_packing_list = self.get_model(packing_list_id)
         return self._to_pydantic(db_packing_list)
 
@@ -650,7 +700,7 @@ class PackingListService:
         packing_lists = self.db.query(DBPackingList).order_by(DBPackingList.created_at.desc()).offset(skip).limit(limit).all()
         return [self._to_summary(pl) for pl in packing_lists]
 
-    def update(self, packing_list_id: int, packing_list: PackingListUpdate) -> PydanticPackingList:
+    def update(self, packing_list_id: Union[int, str], packing_list: PackingListUpdate) -> PydanticPackingList:
         db_packing_list = self.get_model(packing_list_id)
         update_data = packing_list.model_dump(exclude_unset=True)
         for field, value in update_data.items():
@@ -673,7 +723,7 @@ class PackingListService:
         return self._to_pydantic(db_packing_list)
 
 
-    def delete(self, packing_list_id: int) -> None:
+    def delete(self, packing_list_id: Union[int, str]) -> None:
         db_packing_list = self.get_model(packing_list_id)
         self.db.delete(db_packing_list)
         self.db.commit()

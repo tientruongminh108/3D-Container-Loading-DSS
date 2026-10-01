@@ -25,18 +25,13 @@ export function PackingListDetail() {
   useEffect(() => {
     if (!id) return
     
-    // Parse numeric ID from e.g. "PL-001" or "1"
-    const numericId = parseInt(id.replace(/^PL-/i, ''), 10)
-    
-    if (isNaN(numericId) || numericId <= 0) {
-      setError('Invalid packing list ID')
-      setLoading(false)
-      return
-    }
+    // Support numeric database ID or string filename
+    const isNumeric = /^\d+$/.test(id) || /^PL-\d+$/i.test(id)
+    const queryParam = isNumeric ? parseInt(id.replace(/^PL-/i, ''), 10) : id
 
     setLoading(true)
     setError(null)
-    packingListApi.get(numericId)
+    packingListApi.get(queryParam)
       .then((data) => {
         setPackingList(data)
       })
@@ -76,7 +71,7 @@ export function PackingListDetail() {
     )
   }
 
-  const displayId = `PL-${String(packingList.id).padStart(3, '0')}`
+  const displayId = packingList.filename || packingList.name || `PL-${String(packingList.id).padStart(3, '0')}`
   const estVolumeCbm = (packingList.total_volume_cm3 || 0) / 1e6
 
   return (
@@ -87,7 +82,7 @@ export function PackingListDetail() {
             <Icons.ChevronRight />
           </NavLink>
           <div>
-            <h1 className="text-2xl font-bold">{displayId} &ndash; {packingList.name || 'Packing List'}</h1>
+            <h1 className="text-2xl font-bold">{displayId}</h1>
             <p className="text-muted mt-1">
               {packingList.shipment_type} &bull; {formatNumber(packingList.total_cartons)} cartons &bull; {packingList.rows?.length || 0} line items
             </p>
@@ -105,7 +100,7 @@ export function PackingListDetail() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
         <div className="stat-card">
           <div className="stat-label">Packing List ID</div>
-          <div className="stat-value" style={{ fontSize: '18px', fontFamily: 'var(--font-mono)' }}>{displayId}</div>
+          <div className="stat-value" style={{ fontSize: '15px', fontFamily: 'var(--font-mono)' }} title={displayId}>{displayId}</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Created Date</div>
