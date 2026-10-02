@@ -8,7 +8,7 @@ from app.solver.ga import genetic_algorithm, Individual
 from app.solver.placement import decode_chromosome, place_blocks_greedy
 from app.solver.output import build_run_result
 import time
-from app.solver.geometry import Dimensions, BoundingBox
+from app.solver.geometry import Dimensions, BoundingBox, get_unit_inflated_dims
 from app.core.models import RunResult, RunStatus
 
 
@@ -165,7 +165,7 @@ def run_pipeline(
             c_data = []
             c_postures = []
             for c in exploded_cartons:
-                c_inf = Dimensions(c.inflated_length, c.inflated_width, c.inflated_height).apply_posture(c.posture)
+                _, c_inf = get_unit_inflated_dims(c, c.posture)
                 c_bboxes.append(
                     BoundingBox(
                         c.x, c.y, c.z,

@@ -253,9 +253,9 @@ def _build_simple_blocks(
                             inflated_length=b.inflated_length,
                             inflated_width=b.inflated_width,
                             inflated_height=b.inflated_height,
-                            rel_x=inflated_l * ix,
-                            rel_y=inflated_w * iy,
-                            rel_z=inflated_h * iz,
+                            rel_x=length * ix,
+                            rel_y=width * iy,
+                            rel_z=height * iz,
                         ))
 
             blocks.append(Block(
@@ -401,7 +401,7 @@ def _combine_identical_blocks(
                             # Skip the redundant computation and merge unconditionally
                             # whenever _fits_bounds passes.
                             offset = [0.0, 0.0, 0.0]
-                            offset[axis] = b1_infl[axis]
+                            offset[axis] = b1_dims[axis]
 
                             merged_contents = list(b1.contents)
                             for c in b2.contents:
@@ -539,8 +539,8 @@ def _combine_similar_blocks(
                             if fill_ratio >= min_fill:
                                 offset = [0.0, 0.0, 0.0]
                                 offset[axis] = (
-                                    b1.inflated_length if axis == 0 else (
-                                        b1.inflated_width if axis == 1 else b1.inflated_height
+                                    b1.length_cm if axis == 0 else (
+                                        b1.width_cm if axis == 1 else b1.height_cm
                                     )
                                 )
 

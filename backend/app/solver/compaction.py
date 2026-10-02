@@ -9,10 +9,92 @@ from app.solver.geometry import (
     generate_extreme_points,
     sort_extreme_points,
     check_support_ratio,
+    compute_block_content_rel_pos,
 )
 from app.solver.fitness import calculate_fitness, FitnessResult
 from app.solver.placement import find_best_placement, _add_box_extreme_points
 from app.config import get_settings
+
+
+def _check_support_for_unit(
+    idx: int,
+    bbox: BoundingBox,
+    current_bboxes: List[BoundingBox],
+    min_support_ratio: float,
+    placed_data: Optional[List[Any]] = None,
+    placed_postures: Optional[List[Posture]] = None,
+) -> bool:
+    if bbox.min_z <= FLOOR_EPSILON:
+        return True
+
+    # Coarse check using bounding box
+    if not check_support_ratio(bbox, current_bboxes, min_support_ratio):
+        return False
+
+    if placed_data is not None and idx < len(placed_data):
+        unit = placed_data[idx]
+        posture = placed_postures[idx] if (placed_postures and idx < len(placed_postures)) else Posture.LWH
+        if hasattr(unit, "contents") and len(unit.contents) > 1:
+            from app.solver.constraints import check_block_cartons_stackability
+            if not check_block_cartons_stackability(
+                unit, bbox, posture, current_bboxes, placed_data, min_support_ratio, placed_postures=placed_postures
+            ):
+                return False
+        elif hasattr(unit, "length_cm") and hasattr(unit, "width_cm") and hasattr(unit, "height_cm"):
+            # Check physical support ratio without tolerance gap phantom area
+            u_act = Dimensions(unit.length_cm, unit.width_cm, unit.height_cm).apply_posture(posture)
+            base_area = u_act.length * u_act.width
+            if base_area <= 0:
+                return False
+            u_x1 = bbox.min_x
+            u_x2 = bbox.min_x + u_act.length
+            u_y1 = bbox.min_y
+            u_y2 = bbox.min_y + u_act.width
+            u_z1 = bbox.min_z
+
+            supporting_area = 0.0
+            for k, b_k in enumerate(current_bboxes):
+                if k == idx:
+                    continue
+                if abs(b_k.max_z - u_z1) <= FLOOR_EPSILON:
+                    if k < len(placed_data):
+                        sup_unit = placed_data[k]
+                        sup_posture = placed_postures[k] if (placed_postures and k < len(placed_postures)) else Posture.LWH
+                        if hasattr(sup_unit, "contents") and len(sup_unit.contents) > 1:
+                            for sub_c in sup_unit.contents:
+                                p_pos = compute_block_content_rel_pos(sub_c, sup_posture)
+                                sub_act = Dimensions(sub_c.length_cm, sub_c.width_cm, sub_c.height_cm).apply_posture(sup_posture)
+                                sub_top = b_k.min_z + p_pos.z + sub_act.height
+                                if abs(sub_top - u_z1) <= FLOOR_EPSILON:
+                                    s_x1 = b_k.min_x + p_pos.x
+                                    s_x2 = s_x1 + sub_act.length
+                                    s_y1 = b_k.min_y + p_pos.y
+                                    s_y2 = s_y1 + sub_act.width
+                                    ox = min(u_x2, s_x2) - max(u_x1, s_x1)
+                                    if ox > 1e-4:
+                                        oy = min(u_y2, s_y2) - max(u_y1, s_y1)
+                                        if oy > 1e-4:
+                                            supporting_area += ox * oy
+                            continue
+                        sup_act = Dimensions(sup_unit.length_cm, sup_unit.width_cm, sup_unit.height_cm).apply_posture(sup_posture)
+                        s_x1 = b_k.min_x
+                        s_x2 = b_k.min_x + sup_act.length
+                        s_y1 = b_k.min_y
+                        s_y2 = b_k.min_y + sup_act.width
+                    else:
+                        s_x1, s_x2 = b_k.min_x, b_k.max_x
+                        s_y1, s_y2 = b_k.min_y, b_k.max_y
+
+                    ox = min(u_x2, s_x2) - max(u_x1, s_x1)
+                    if ox > 1e-4:
+                        oy = min(u_y2, s_y2) - max(u_y1, s_y1)
+                        if oy > 1e-4:
+                            supporting_area += ox * oy
+
+            if (supporting_area / base_area) < min_support_ratio - 1e-4:
+                return False
+
+    return True
 
 
 def is_valid_shift(
@@ -35,37 +117,17 @@ def is_valid_shift(
 
     # 1. Check if the moved box itself has support (if not on floor)
     if new_bbox.min_z > FLOOR_EPSILON:
-        if not check_support_ratio(new_bbox, current_bboxes, min_support_ratio):
+        if not _check_support_for_unit(i, new_bbox, current_bboxes, min_support_ratio, placed_data, placed_postures):
             current_bboxes[i] = old_bbox
             return False
-        if placed_data is not None and i < len(placed_data):
-            unit_i = placed_data[i]
-            if hasattr(unit_i, "contents") and len(unit_i.contents) > 1:
-                posture_i = placed_postures[i] if (placed_postures and i < len(placed_postures)) else Posture.LWH
-                from app.solver.constraints import check_block_cartons_stackability
-                if not check_block_cartons_stackability(
-                    unit_i, new_bbox, posture_i, current_bboxes, placed_data, min_support_ratio, placed_postures=placed_postures
-                ):
-                    current_bboxes[i] = old_bbox
-                    return False
 
     # 2. Check if any box resting on old_bbox loses support
     for j, b_j in enumerate(current_bboxes):
         if j != i and b_j.min_z > FLOOR_EPSILON:
             if abs(b_j.min_z - old_bbox.max_z) < 1e-4 and old_bbox.contact_area(b_j) > 1e-4:
-                if not check_support_ratio(b_j, current_bboxes, min_support_ratio):
+                if not _check_support_for_unit(j, b_j, current_bboxes, min_support_ratio, placed_data, placed_postures):
                     current_bboxes[i] = old_bbox
                     return False
-                if placed_data is not None and j < len(placed_data):
-                    unit_j = placed_data[j]
-                    if hasattr(unit_j, "contents") and len(unit_j.contents) > 1:
-                        posture_j = placed_postures[j] if (placed_postures and j < len(placed_postures)) else Posture.LWH
-                        from app.solver.constraints import check_block_cartons_stackability
-                        if not check_block_cartons_stackability(
-                            unit_j, b_j, posture_j, current_bboxes, placed_data, min_support_ratio, placed_postures=placed_postures
-                        ):
-                            current_bboxes[i] = old_bbox
-                            return False
 
     current_bboxes[i] = old_bbox
     return True

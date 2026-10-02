@@ -1,1 +1,6 @@
-
+dataset,budget,variant,cand_mean_fill,base_mean_fill,delta_fill_pct,gain_pct,p_value,cohens_d,cand_valid_rate,base_valid_rate
+1,interactive,B,66.24,66.0,0.24,0.37,0.4255,0.56,100.0,100.0
+3,interactive,B,72.1,67.74,4.36,6.44,0.0,2.08,100.0,100.0
+3,interactive,C,64.67,67.74,-3.07,-4.53,0.0,-1.55,100.0,100.0
+3,interactive,D,67.63,67.74,-0.1,-0.15,0.9543,-0.04,75.0,100.0
+3,interactive,E,79.8,67.74,12.06,17.81,0.0,6.4,100.0,100.0

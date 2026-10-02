@@ -10,6 +10,7 @@ from app.solver.geometry import (
     check_support_ratio,
     check_cog_balance,
     transform_position_by_posture,
+    compute_block_content_rel_pos,
 )
 from app.solver.parsing import Box
 from app.solver.block_generation import Block
@@ -100,15 +101,31 @@ def check_block_cartons_stackability(
     for i, placed in enumerate(placed_boxes):
         if abs(placed.max_z - candidate_bbox.min_z) <= FLOOR_EPSILON:
             p_data = placed_boxes_data[i]
-            if placed_postures is not None and i < len(placed_postures) and hasattr(p_data, 'length_cm'):
-                p_dims = Dimensions(p_data.length_cm, p_data.width_cm, p_data.height_cm).apply_posture(placed_postures[i])
+            p_posture = placed_postures[i] if (placed_postures is not None and i < len(placed_postures)) else Posture.LWH
+            if hasattr(p_data, "contents") and len(p_data.contents) > 1:
+                for sub_c in p_data.contents:
+                    p_pos = compute_block_content_rel_pos(sub_c, p_posture)
+                    sub_act = Dimensions(sub_c.length_cm, sub_c.width_cm, sub_c.height_cm).apply_posture(p_posture)
+                    sub_top = placed.min_z + p_pos.z + sub_act.height
+                    if abs(sub_top - candidate_bbox.min_z) <= FLOOR_EPSILON:
+                        sup_surfaces.append((
+                            placed.min_x + p_pos.x,
+                            placed.min_x + p_pos.x + sub_act.length,
+                            placed.min_y + p_pos.y,
+                            placed.min_y + p_pos.y + sub_act.width,
+                            sub_c.weight_kg,
+                        ))
+            elif hasattr(p_data, 'length_cm'):
+                p_dims = Dimensions(p_data.length_cm, p_data.width_cm, p_data.height_cm).apply_posture(p_posture)
                 p_max_x = placed.min_x + p_dims.length
                 p_max_y = placed.min_y + p_dims.width
+                sup_unit_wt = getattr(p_data, 'boxes', [p_data])[0].weight_kg
+                sup_surfaces.append((placed.min_x, p_max_x, placed.min_y, p_max_y, sup_unit_wt))
             else:
                 p_max_x = placed.max_x
                 p_max_y = placed.max_y
-            sup_unit_wt = getattr(p_data, 'boxes', [p_data])[0].weight_kg
-            sup_surfaces.append((placed.min_x, p_max_x, placed.min_y, p_max_y, sup_unit_wt))
+                sup_unit_wt = getattr(p_data, 'boxes', [p_data])[0].weight_kg
+                sup_surfaces.append((placed.min_x, p_max_x, placed.min_y, p_max_y, sup_unit_wt))
 
     if not sup_surfaces:
         return False
@@ -127,8 +144,7 @@ def check_block_cartons_stackability(
     # support from external placed_boxes. Cartons in higher layers of the block sit
     # on identical sibling cartons directly beneath them within the intact block.
     for content in contents:
-        rel_pos = Position(content.rel_x, content.rel_y, content.rel_z)
-        world_rel_pos = transform_position_by_posture(rel_pos, posture)
+        world_rel_pos = compute_block_content_rel_pos(content, posture)
         if world_rel_pos.z > 1e-4:
             continue
 
@@ -166,27 +182,69 @@ def check_stackability(
     if c_min_z <= FLOOR_EPSILON:
         return True
 
-    footprint_area = (candidate.max_x - candidate.min_x) * (candidate.max_y - candidate.min_y)
+    cand_unit_wt = getattr(candidate_box, 'boxes', [candidate_box])[0].weight_kg
+
+    if posture is not None and hasattr(candidate_box, 'length_cm') and hasattr(candidate_box, 'width_cm') and hasattr(candidate_box, 'height_cm'):
+        cand_dims = Dimensions(candidate_box.length_cm, candidate_box.width_cm, candidate_box.height_cm).apply_posture(posture)
+        footprint_area = cand_dims.length * cand_dims.width
+        c_min_x = candidate.min_x
+        c_max_x = candidate.min_x + cand_dims.length
+        c_min_y = candidate.min_y
+        c_max_y = candidate.min_y + cand_dims.width
+    else:
+        footprint_area = (candidate.max_x - candidate.min_x) * (candidate.max_y - candidate.min_y)
+        c_min_x, c_max_x = candidate.min_x, candidate.max_x
+        c_min_y, c_max_y = candidate.min_y, candidate.max_y
+
     if footprint_area <= 0:
         return False
 
     contact_area = 0.0
-    cand_unit_wt = getattr(candidate_box, 'boxes', [candidate_box])[0].weight_kg
-    c_min_x, c_max_x = candidate.min_x, candidate.max_x
-    c_min_y, c_max_y = candidate.min_y, candidate.max_y
-
     for i, placed in enumerate(placed_boxes):
         if abs(placed.max_z - c_min_z) <= FLOOR_EPSILON:
-            ox = min(placed.max_x, c_max_x) - max(placed.min_x, c_min_x)
+            p_data = placed_boxes_data[i]
+            p_posture = placed_postures[i] if (placed_postures is not None and i < len(placed_postures)) else Posture.LWH
+            if hasattr(p_data, "contents") and len(p_data.contents) > 1:
+                for sub_c in p_data.contents:
+                    p_pos = compute_block_content_rel_pos(sub_c, p_posture)
+                    sub_act = Dimensions(sub_c.length_cm, sub_c.width_cm, sub_c.height_cm).apply_posture(p_posture)
+                    sub_top = placed.min_z + p_pos.z + sub_act.height
+                    if abs(sub_top - c_min_z) <= FLOOR_EPSILON:
+                        s_x1 = placed.min_x + p_pos.x
+                        s_x2 = s_x1 + sub_act.length
+                        s_y1 = placed.min_y + p_pos.y
+                        s_y2 = s_y1 + sub_act.width
+                        ox = min(s_x2, c_max_x) - max(s_x1, c_min_x)
+                        if ox > 1e-4:
+                            oy = min(s_y2, c_max_y) - max(s_y1, c_min_y)
+                            if oy > 1e-4:
+                                if cand_unit_wt > sub_c.weight_kg + 1e-3:
+                                    return False
+                                contact_area += ox * oy
+                continue
+
+            if (
+                hasattr(p_data, 'length_cm')
+                and hasattr(p_data, 'width_cm')
+                and hasattr(p_data, 'height_cm')
+            ):
+                p_dims = Dimensions(p_data.length_cm, p_data.width_cm, p_data.height_cm).apply_posture(p_posture)
+                p_max_x = placed.min_x + p_dims.length
+                p_max_y = placed.min_y + p_dims.width
+            else:
+                p_max_x = placed.max_x
+                p_max_y = placed.max_y
+
+            ox = min(p_max_x, c_max_x) - max(placed.min_x, c_min_x)
             if ox > 1e-4:
-                oy = min(placed.max_y, c_max_y) - max(placed.min_y, c_min_y)
+                oy = min(p_max_y, c_max_y) - max(placed.min_y, c_min_y)
                 if oy > 1e-4:
-                    sup_unit_wt = getattr(placed_boxes_data[i], 'boxes', [placed_boxes_data[i]])[0].weight_kg
+                    sup_unit_wt = getattr(p_data, 'boxes', [p_data])[0].weight_kg
                     if cand_unit_wt > sup_unit_wt + 1e-3:
                         return False
                     contact_area += ox * oy
 
-    if (contact_area / footprint_area) < min_support_ratio:
+    if (contact_area / footprint_area) < min_support_ratio - 1e-4:
         return False
 
     if posture is not None:

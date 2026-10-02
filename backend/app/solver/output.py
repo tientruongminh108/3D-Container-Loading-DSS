@@ -6,6 +6,7 @@ from app.solver.geometry import (
     Dimensions,
     Posture,
     transform_position_by_posture,
+    compute_block_content_rel_pos,
 )
 from app.solver.parsing import Box
 from app.solver.block_generation import Block
@@ -70,8 +71,7 @@ def explode_blocks(
     for unit, bbox, posture in zip(placed_data, placed_bboxes, postures):
         if isinstance(unit, Block):
             for content in unit.contents:
-                rel_pos = Position(content.rel_x, content.rel_y, content.rel_z)
-                world_rel_pos = transform_position_by_posture(rel_pos, posture)
+                world_rel_pos = compute_block_content_rel_pos(content, posture)
 
                 abs_x = bbox.min_x + world_rel_pos.x
                 abs_y = bbox.min_y + world_rel_pos.y

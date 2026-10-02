@@ -19,6 +19,7 @@ from app.solver.geometry import (
     rear_face,
     door_face,
     is_deeper,
+    get_unit_inflated_dims,
 )
 from app.solver.parsing import Box
 from app.solver.block_generation import Block
@@ -176,13 +177,12 @@ def find_best_placement(
 
     # Pre-calculate dimensions for all permitted postures
     posture_specs = []
-    box_dims = Dimensions(box.length_cm, box.width_cm, box.height_cm)
-    box_inflated = Dimensions(box.inflated_length, box.inflated_width, box.inflated_height)
     for posture in box.permitted_postures:
+        dims, inflated_dims = get_unit_inflated_dims(box, posture)
         posture_specs.append((
             posture,
-            box_dims.apply_posture(posture),
-            box_inflated.apply_posture(posture),
+            dims,
+            inflated_dims,
         ))
 
     c_len, c_wid, c_hgt = container_dims.length, container_dims.width, container_dims.height
@@ -415,9 +415,7 @@ def place_boxes_greedy(
             placed_at_corner = False
             
             for posture in box.permitted_postures:
-                dims = box_dims.apply_posture(posture)
-                # Pass inflated dims so rear-corner boundary check uses padded size
-                inflated_dims = Dimensions(box.inflated_length, box.inflated_width, box.inflated_height).apply_posture(posture)
+                dims, inflated_dims = get_unit_inflated_dims(box, posture)
                 corners = corner_points_for(
                     box, inflated_dims, container_dims,
                     "LCL" if is_lcl else "FCL",
@@ -540,10 +538,7 @@ def place_blocks_greedy(
 
         for ep in sorted_eps:
             for posture in block.boxes[0].permitted_postures if block.boxes else [Posture.LWH]:
-                dims = Dimensions(block.length_cm, block.width_cm, block.height_cm).apply_posture(posture)
-                inflated_dims = Dimensions(
-                    block.inflated_length, block.inflated_width, block.inflated_height
-                ).apply_posture(posture)
+                dims, inflated_dims = get_unit_inflated_dims(block, posture)
 
                 pos = Position(ep.x, ep.y, ep.z)
 
@@ -650,10 +645,7 @@ def decode_chromosome(
         for posture in postures_to_try:
             # If still in corner phase, try corner points first
             if corner_phase:
-                box_dims = Dimensions(box.length_cm, box.width_cm, box.height_cm).apply_posture(posture)
-                # Use inflated dims for corner boundary check so rear corners are not
-                # falsely rejected when L - inflated_dx maps to a valid non-negative x.
-                inflated_dims = Dimensions(box.inflated_length, box.inflated_width, box.inflated_height).apply_posture(posture)
+                box_dims, inflated_dims = get_unit_inflated_dims(box, posture)
                 corners = corner_points_for(
                     box, inflated_dims, container_dims,
                     "LCL" if is_lcl else "FCL",

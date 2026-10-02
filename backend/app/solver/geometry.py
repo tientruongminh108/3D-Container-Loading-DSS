@@ -12,7 +12,7 @@ The container is a cuboid with usable length L, width W, height H (L >= W).
 """
 
 from dataclasses import dataclass
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Any
 from enum import Enum
 import math
 
@@ -95,6 +95,58 @@ def transform_position_by_posture(
     elif posture == Posture.WHL:
         return Position(y, z, x)
     return Position(x, y, z)
+
+
+def compute_block_content_rel_pos(content: Any, posture: Posture) -> Position:
+    """Compute the world relative position of a carton inside a Block under given posture.
+
+    In the Block's unrotated local coordinates, content.rel_x, rel_y, rel_z
+    are physical offsets: ix * length_cm, iy * width_cm, iz * height_cm.
+    When the Block is placed in `posture`, the carton rotates accordingly.
+    Tolerance gap is applied ONLY to the two horizontal axes in world coordinates (X, Y)
+    and NEVER to the vertical axis (Z) to prevent vertical gaps/floating cartons.
+    """
+    nat_pos = Position(content.rel_x, content.rel_y, content.rel_z)
+    w_uninflated = transform_position_by_posture(nat_pos, posture)
+
+    c_act = Dimensions(content.length_cm, content.width_cm, content.height_cm).apply_posture(posture)
+    gap_x = max(0.0, getattr(content, "inflated_length", content.length_cm) - content.length_cm)
+    gap_y = max(0.0, getattr(content, "inflated_width", content.width_cm) - content.width_cm)
+    gap = max(gap_x, gap_y)
+
+    w_ix = round(w_uninflated.x / c_act.length) if c_act.length > 0 else 0
+    w_iy = round(w_uninflated.y / c_act.width) if c_act.width > 0 else 0
+
+    return Position(
+        w_uninflated.x + w_ix * gap,
+        w_uninflated.y + w_iy * gap,
+        w_uninflated.z,
+    )
+
+
+def get_unit_inflated_dims(unit: Any, posture: Posture) -> Tuple[Dimensions, Dimensions]:
+    """Get the physical and inflated dimensions of a packing unit (Box or Block) under `posture`.
+
+    Tolerance gap is applied ONLY to horizontal axes (world X and Y), never to vertical axis (Z).
+    """
+    act_dims = Dimensions(unit.length_cm, unit.width_cm, unit.height_cm).apply_posture(posture)
+    contents = getattr(unit, "contents", None) or getattr(unit, "boxes", None)
+    if contents:
+        rep_box = contents[0]
+        gap_x = max(0.0, getattr(rep_box, "inflated_length", rep_box.length_cm) - rep_box.length_cm)
+        gap_y = max(0.0, getattr(rep_box, "inflated_width", rep_box.width_cm) - rep_box.width_cm)
+        gap = max(gap_x, gap_y)
+        c_act = Dimensions(rep_box.length_cm, rep_box.width_cm, rep_box.height_cm).apply_posture(posture)
+        nx = max(1, round(act_dims.length / c_act.length)) if c_act.length > 0 else 1
+        ny = max(1, round(act_dims.width / c_act.width)) if c_act.width > 0 else 1
+        infl_dims = Dimensions(act_dims.length + nx * gap, act_dims.width + ny * gap, act_dims.height)
+    else:
+        gap_x = max(0.0, getattr(unit, "inflated_length", unit.length_cm) - unit.length_cm)
+        gap_y = max(0.0, getattr(unit, "inflated_width", unit.width_cm) - unit.width_cm)
+        gap = max(gap_x, gap_y)
+        infl_dims = Dimensions(act_dims.length + gap, act_dims.width + gap, act_dims.height)
+    return act_dims, infl_dims
+
 
 
 @dataclass
