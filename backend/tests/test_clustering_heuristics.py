@@ -94,17 +94,6 @@ class TestClusteringHeuristics(unittest.TestCase):
         self.assertIn(2, partial_dict)
         self.assertIn(3, partial_dict)
 
-        # For LCL deepest customer: only rear corners (0 and 1) are offered
-        lcl_deep_corners = corner_points_for(box, dims, c_dims, "LCL", box.customer_sequence)
-        self.assertEqual(len(lcl_deep_corners), 2)
-        lcl_dict = dict(lcl_deep_corners)
-        self.assertIn(0, lcl_dict)
-        self.assertIn(1, lcl_dict)
-
-        # For LCL non-deepest customer: no corners offered
-        lcl_other_corners = corner_points_for(box, dims, c_dims, "LCL", box.customer_sequence + 1)
-        self.assertEqual(lcl_other_corners, [])
-
     def test_same_item_affinity_bonus(self):
         c_dims = Dimensions(1200, 240, 260)
         placed_box_a = BoundingBox(1150, 0, 0, 1200, 40, 30)

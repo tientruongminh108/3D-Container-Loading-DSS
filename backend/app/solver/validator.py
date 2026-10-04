@@ -2,7 +2,8 @@ from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass, field
 import numpy as np
 
-from app.solver.geometry import Dimensions, Posture, FLOOR_EPSILON
+from app.solver.geometry import Dimensions, Posture, FLOOR_EPSILON, BoundingBox
+from app.solver.constraints import check_corner_clearance
 from app.core.models import PlacedBox
 
 
@@ -94,6 +95,14 @@ def validate_solution(
                 f"Box {b.box_id} out of bounds: [{b.x:.2f}, {bx2:.2f}]x[{b.y:.2f}, {by2:.2f}]x[{b.z:.2f}, {bz2:.2f}] "
                 f"vs container [{cL:.1f}, {cW:.1f}, {cH:.1f}]"
             )
+        else:
+            bbox = BoundingBox(b.x, b.y, b.z, bx2, by2, bz2)
+            if not check_corner_clearance(bbox, container_dims):
+                violations["bounds"] += 1
+                messages.append(
+                    f"Box {b.box_id} intersects top-corner obstruction cuboid: "
+                    f"[{b.x:.2f}, {bx2:.2f}]x[{b.y:.2f}, {by2:.2f}]x[{b.z:.2f}, {bz2:.2f}]"
+                )
 
     # 4. Non-Overlap
     for i in range(n):
@@ -165,42 +174,6 @@ def validate_solution(
                         f"lighter Box {s.box_id} ({s.weight_kg:.2f} kg)"
                     )
 
-    # 8. LIFO Delivery Order (LCL Mode)
-    if is_lcl:
-        for i in range(n):
-            b1 = placed_boxes[i]
-            seq1 = getattr(b1, "customer_sequence", 0)
-            b1_x2 = b1.x + b1.actual_length
-            b1_y2 = b1.y + b1.actual_width
-            b1_z2 = b1.z + b1.actual_height
-
-            for j in range(n):
-                if i == j:
-                    continue
-                b2 = placed_boxes[j]
-                seq2 = getattr(b2, "customer_sequence", 0)
-
-                # Check pairs where b1 unloads earlier than b2
-                # In authoritative convention:
-                # Door is at X = L, Rear wall is at X = 0.
-                # Smaller customer_sequence unloads earlier -> must be closer to door (larger X).
-                # Larger customer_sequence unloads later -> must be deeper (smaller X).
-                if seq1 < seq2:
-                    b2_x2 = b2.x + b2.actual_length
-                    b2_y2 = b2.y + b2.actual_width
-                    b2_z2 = b2.z + b2.actual_height
-
-                    ov_y = min(b1_y2, b2_y2) - max(b1.y, b2.y)
-                    ov_z = min(b1_z2, b2_z2) - max(b1.z, b2.z)
-
-                    if ov_y > eps and ov_z > eps:
-                        # b2 is deeper, so its front face (b2_x2) must not exceed b1's rear face (b1.x)
-                        if b2_x2 > b1.x + eps:
-                            violations["lifo"] += 1
-                            messages.append(
-                                f"LIFO violation: Customer {seq2} box {b2.box_id} [x={b2.x:.1f}..{b2_x2:.1f}] "
-                                f"blocks Customer {seq1} box {b1.box_id} [x={b1.x:.1f}..{b1_x2:.1f}]"
-                            )
 
     total_violations = sum(violations.values())
     is_valid = (total_violations == 0)

@@ -269,6 +269,8 @@ def execute_single_run(
             "peak_memory_mb": round(peak_mem / (1024 * 1024), 2),
         }
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         tracemalloc.stop()
         t1 = time.perf_counter()
         return {

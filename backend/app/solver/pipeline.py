@@ -83,21 +83,13 @@ def run_pipeline(
     is_lcl = shipment_type == ShipmentType.LCL
 
     # If strategy options are not explicitly specified, auto-select the best validated strategy:
-    # - LCL shipments: Variant B (Static Blocks + Post-Explode Compaction) protects strict LIFO customer separation
-    # - FCL shipments: Variant E_PEC (Dynamic Blocks + Post-Explode Compaction) combines B & E for optimal ~80% fill
+    # Always use the E_PEC configuration unconditionally for every input regardless of customer count.
     if options is None or (options.use_static_blocks is None and options.dynamic_blocks is None):
-        if is_lcl:
-            use_static_blocks = True
-            dynamic_blocks = False
-            ga_level = "carton"
-            group_key = "item_id"
-            post_explode_compaction = True
-        else:
-            use_static_blocks = False
-            dynamic_blocks = True
-            ga_level = "group"
-            group_key = "geometry"
-            post_explode_compaction = True
+        use_static_blocks = False
+        dynamic_blocks = True
+        ga_level = "group"
+        group_key = "geometry"
+        post_explode_compaction = True
 
     if use_static_blocks:
         # Variants A and B: Static Blocks
@@ -137,7 +129,6 @@ def run_pipeline(
             units=all_units,
             container_dims=container_dims,
             max_weight=container_spec.max_weight_kg,
-            is_lcl=is_lcl,
             population_size=pop_size,
             generations=generations,
             progress_callback=ga_progress,
@@ -150,7 +141,7 @@ def run_pipeline(
         ordered_units = [all_units[i] for i in order]
         ordered_chromosome = [best_individual.chromosome[i] for i in order]
         placed_bboxes, placed_data, unplaced, current_weight, placed_postures = decode_chromosome(
-            ordered_chromosome, ordered_units, container_dims, container_spec.max_weight_kg, is_lcl
+            ordered_chromosome, ordered_units, container_dims, container_spec.max_weight_kg
         )
         for idx, orig_i in enumerate(order):
             best_individual.chromosome[orig_i] = ordered_chromosome[idx]
@@ -208,7 +199,6 @@ def run_pipeline(
                 unplaced=exploded_unplaced,
                 container_dims=container_dims,
                 max_weight=container_spec.max_weight_kg,
-                is_lcl=is_lcl,
                 current_weight=current_weight,
             )
         else:
@@ -220,7 +210,6 @@ def run_pipeline(
                 unplaced=unplaced,
                 container_dims=container_dims,
                 max_weight=container_spec.max_weight_kg,
-                is_lcl=is_lcl,
                 current_weight=current_weight,
             )
 
@@ -233,17 +222,10 @@ def run_pipeline(
 
     elif ga_level == "carton":
         # Variant C: No static blocks, naive sort by item_id, carton-level GA
-        if is_lcl:
-            # Customer sequence descending, then same item_id contiguous
-            sorted_boxes = sorted(
-                boxes,
-                key=lambda b: (-b.customer_sequence, b.item_id, -(b.length_cm * b.width_cm * b.height_cm), -b.weight_kg, b.box_id),
-            )
-        else:
-            sorted_boxes = sorted(
-                boxes,
-                key=lambda b: (b.item_id, -(b.length_cm * b.width_cm * b.height_cm), -b.weight_kg, b.box_id),
-            )
+        sorted_boxes = sorted(
+            boxes,
+            key=lambda b: (b.item_id, -(b.length_cm * b.width_cm * b.height_cm), -b.weight_kg, b.box_id),
+        )
 
         all_units = sorted_boxes
 
@@ -263,7 +245,6 @@ def run_pipeline(
             units=all_units,
             container_dims=container_dims,
             max_weight=container_spec.max_weight_kg,
-            is_lcl=is_lcl,
             population_size=pop_size,
             generations=generations,
             progress_callback=ga_progress,
@@ -273,7 +254,7 @@ def run_pipeline(
         ordered_units = [all_units[i] for i in order]
         ordered_chromosome = [best_individual.chromosome[i] for i in order]
         placed_bboxes, placed_data, unplaced, current_weight, placed_postures = decode_chromosome(
-            ordered_chromosome, ordered_units, container_dims, container_spec.max_weight_kg, is_lcl
+            ordered_chromosome, ordered_units, container_dims, container_spec.max_weight_kg
         )
 
         from app.solver.compaction import run_compaction_pass
@@ -285,7 +266,6 @@ def run_pipeline(
                 unplaced=unplaced,
                 container_dims=container_dims,
                 max_weight=container_spec.max_weight_kg,
-                is_lcl=is_lcl,
                 current_weight=current_weight,
             )
         else:
@@ -320,7 +300,6 @@ def run_pipeline(
             groups=carton_groups,
             container_dims=container_dims,
             max_weight=container_spec.max_weight_kg,
-            is_lcl=is_lcl,
             population_size=pop_size,
             generations=generations,
             use_dynamic_blocks=dynamic_blocks,
@@ -328,7 +307,7 @@ def run_pipeline(
         )
 
         placed_bboxes, placed_data, unplaced, current_weight, placed_postures = decode_group_individual_dynamic(
-            group_best, carton_groups, container_dims, container_spec.max_weight_kg, is_lcl, use_dynamic_blocks=dynamic_blocks
+            group_best, carton_groups, container_dims, container_spec.max_weight_kg, use_dynamic_blocks=dynamic_blocks
         )
 
         from app.solver.compaction import run_compaction_pass
@@ -340,7 +319,6 @@ def run_pipeline(
                 unplaced=unplaced,
                 container_dims=container_dims,
                 max_weight=container_spec.max_weight_kg,
-                is_lcl=is_lcl,
                 current_weight=current_weight,
             )
         else:

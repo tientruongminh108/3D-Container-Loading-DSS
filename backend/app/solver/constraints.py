@@ -71,6 +71,54 @@ def check_container_bounds(
     )
 
 
+def check_corner_clearance(
+    candidate: BoundingBox,
+    container_dims: Dimensions,
+) -> bool:
+    """Check whether a candidate BoundingBox avoids the 4 top-corner obstruction
+    cuboids (ISO 1161 corner casting approximation: 17.8 x 16.2 x 11.8 cm).
+
+    The 4 top corners are:
+    - Rear-left-top:  x in [0, X_CM],       y in [0, Y_CM],       z in [H - Z_CM, H]
+    - Rear-right-top: x in [0, X_CM],       y in [W - Y_CM, W],   z in [H - Z_CM, H]
+    - Door-left-top:  x in [L - X_CM, L],   y in [0, Y_CM],       z in [H - Z_CM, H]
+    - Door-right-top: x in [L - X_CM, L],   y in [W - Y_CM, W],   z in [H - Z_CM, H]
+    """
+    settings = get_settings()
+    cz = getattr(settings, "CORNER_BLOCK_Z_CM", 11.8)
+    # Early-exit: most candidates are below the top corner obstruction zone
+    if candidate.max_z <= container_dims.height - cz:
+        return True
+
+    cx = getattr(settings, "CORNER_BLOCK_X_CM", 17.8)
+    cy = getattr(settings, "CORNER_BLOCK_Y_CM", 16.2)
+    cL = container_dims.length
+    cW = container_dims.width
+
+    # ISO 1161 corner castings only apply when the container is sufficiently large
+    # that opposite corner castings do not overlap (L > 2*cx, W > 2*cy, H > 2*cz).
+    if cL <= 2 * cx or cW <= 2 * cy or container_dims.height <= 2 * cz:
+        return True
+
+    # Check X overlap with rear corners [0, cx]
+    overlap_rear_x = (candidate.min_x < cx and candidate.max_x > 0)
+    # Check X overlap with door corners [cL - cx, cL]
+    overlap_door_x = (candidate.max_x > cL - cx and candidate.min_x < cL)
+
+    if not (overlap_rear_x or overlap_door_x):
+        return True
+
+    # Check Y overlap with left corners [0, cy]
+    overlap_left_y = (candidate.min_y < cy and candidate.max_y > 0)
+    # Check Y overlap with right corners [cW - cy, cW]
+    overlap_right_y = (candidate.max_y > cW - cy and candidate.min_y < cW)
+
+    if (overlap_rear_x or overlap_door_x) and (overlap_left_y or overlap_right_y):
+        return False
+
+    return True
+
+
 def check_block_cartons_stackability(
     block: Any,
     candidate_bbox: BoundingBox,
@@ -256,46 +304,6 @@ def check_stackability(
     return True
 
 
-def check_lifo(
-    candidate: BoundingBox,
-    placed_boxes: List[BoundingBox],
-    placed_boxes_data: List,
-    candidate_sequence: int,
-) -> bool:
-    """Order-independent, bidirectional LIFO check (door = x L, rear wall = x 0).
-
-    In the authoritative convention, origin (0, 0, 0) is the rear wall; door is at x = L.
-    Cargo for an EARLIER drop-off (smaller customer_sequence) unloads first, so it
-    must be nearer the door (larger x) than cargo for a LATER drop-off (smaller x).
-
-    For every placed p sharing a Y-Z cross-section with candidate c:
-    - if p.seq < c.seq (p unloads earlier, must be nearer door): require c.max_x <= p.min_x
-    - if p.seq > c.seq (p unloads later, must be deeper): require p.max_x <= c.min_x
-    - if p.seq == c.seq: no constraint.
-    """
-    c_min_x, c_max_x = candidate.min_x, candidate.max_x
-    c_min_y, c_max_y = candidate.min_y, candidate.max_y
-    c_min_z, c_max_z = candidate.min_z, candidate.max_z
-    c_seq = candidate_sequence
-    eps = 1e-6
-
-    for placed, p_data in zip(reversed(placed_boxes), reversed(placed_boxes_data)):
-        p_seq = getattr(p_data, 'customer_sequence', 0)
-        if p_seq == c_seq:
-            continue
-        if c_max_y <= placed.min_y or placed.max_y <= c_min_y or c_max_z <= placed.min_z or placed.max_z <= c_min_z:
-            continue
-        if p_seq < c_seq:
-            # candidate is later drop-off (deeper): must not intrude past placed's rear face
-            if c_max_x > placed.min_x + eps:
-                return False
-        else:
-            # candidate is earlier drop-off (nearer door): placed must not intrude past candidate's rear face
-            if placed.max_x > c_min_x + eps:
-                return False
-    return True
-
-
 def check_all_constraints(
     candidate: PlacementCandidate,
     placed_boxes: List[BoundingBox],
@@ -303,7 +311,7 @@ def check_all_constraints(
     container_dims: Dimensions,
     current_weight: float,
     max_weight: float,
-    is_lcl: bool,
+    is_lcl: bool = False,
     placed_postures: Optional[List[Posture]] = None,
 ) -> Tuple[bool, str]:
     if not check_orientation(candidate.box, candidate.posture):
@@ -315,6 +323,9 @@ def check_all_constraints(
     if not check_container_bounds(candidate_bbox, container_dims):
         return False, "container_bounds"
 
+    if not check_corner_clearance(candidate_bbox, container_dims):
+        return False, "corner_clearance"
+
     if not check_non_overlap(candidate_bbox, placed_boxes):
         return False, "non_overlap"
 
@@ -325,11 +336,5 @@ def check_all_constraints(
         candidate_bbox, placed_boxes, candidate.box, placed_boxes_data, posture=candidate.posture, placed_postures=placed_postures
     ):
         return False, "stackability"
-
-    if is_lcl:
-        if not check_lifo(
-            candidate_bbox, placed_boxes, placed_boxes_data, candidate.box.customer_sequence
-        ):
-            return False, "lifo"
 
     return True, "ok"

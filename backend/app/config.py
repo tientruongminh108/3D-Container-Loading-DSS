@@ -4,6 +4,12 @@ from functools import lru_cache
 
 
 
+# Top-corner casting obstruction dimensions (ISO 1161 approximation: 17.8 x 16.2 x 11.8 cm)
+CORNER_BLOCK_X_CM: float = 17.8
+CORNER_BLOCK_Y_CM: float = 16.2
+CORNER_BLOCK_Z_CM: float = 11.8
+
+
 class Settings(BaseSettings):
     # API
     API_V1_PREFIX: str = "/api"
@@ -41,10 +47,10 @@ class Settings(BaseSettings):
     BLOCK_HEIGHT_DEADZONE: Tuple[float, float] = (0.35, 0.75)
 
     # Strategy Variants
-    USE_STATIC_BLOCKS: bool = True
-    GROUP_KEY: str = "item_id"  # "item_id" | "geometry"
-    GA_LEVEL: str = "carton"    # "carton" | "group"
-    DYNAMIC_BLOCKS: bool = False
+    USE_STATIC_BLOCKS: bool = False
+    GROUP_KEY: str = "geometry"  # "item_id" | "geometry"
+    GA_LEVEL: str = "group"    # "carton" | "group"
+    DYNAMIC_BLOCKS: bool = True
     POST_EXPLODE_COMPACTION: bool = True
 
 
@@ -64,6 +70,9 @@ class Settings(BaseSettings):
     COG_TOLERANCE_XY: float = 0.05  # ±5% of length/width
     COG_TOLERANCE_Z: float = 0.10   # +10% of height
     UNPLACED_RANK_WEIGHT: float = 2.0
+    CORNER_BLOCK_X_CM: float = CORNER_BLOCK_X_CM
+    CORNER_BLOCK_Y_CM: float = CORNER_BLOCK_Y_CM
+    CORNER_BLOCK_Z_CM: float = CORNER_BLOCK_Z_CM
 
     # Fitness weights
     FITNESS_VOLUME_WEIGHT: float = 1.0

@@ -2,7 +2,7 @@ from .parsing import parse_and_join, Box, ContainerSpec, parse_container_spec, p
 from .sorting import initial_sort, resort_after_blocks
 from .block_generation import build_blocks, Block
 from .placement import find_best_placement, place_boxes_greedy, place_blocks_greedy, decode_chromosome
-from .constraints import check_all_constraints, PlacementCandidate
+from .constraints import check_all_constraints, check_corner_clearance, PlacementCandidate
 from .ga import genetic_algorithm, Individual, create_individual, evaluate_individual
 from .sa import simulated_annealing
 from .fitness import calculate_fitness, FitnessResult
@@ -25,6 +25,7 @@ __all__ = [
     "place_blocks_greedy",
     "decode_chromosome",
     "check_all_constraints",
+    "check_corner_clearance",
     "PlacementCandidate",
     "genetic_algorithm",
     "Individual",

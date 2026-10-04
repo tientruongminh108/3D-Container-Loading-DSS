@@ -122,9 +122,9 @@ def test_initial_sort_lcl():
     ]
 
     sorted_boxes = initial_sort(boxes, "LCL")
-    # In authoritative convention: customer_sequence desc (later customer loaded deepest at x=0)
-    assert sorted_boxes[0].customer_sequence == 2  # CUST-B first (deepest)
-    assert sorted_boxes[1].customer_sequence == 1  # CUST-A second (nearer door)
+    # Customer sequence no longer affects sort order: B_1 (vol=240,000) precedes A_1 (vol=200,000)
+    assert sorted_boxes[0].box_id == "B_1"
+    assert sorted_boxes[1].box_id == "A_1"
 
 
 # ---------------------------------------------------------------------------

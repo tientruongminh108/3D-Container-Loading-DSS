@@ -13,6 +13,7 @@ from app.solver.geometry import (
 )
 from app.solver.fitness import calculate_fitness, FitnessResult
 from app.solver.placement import find_best_placement, _add_box_extreme_points
+from app.solver.constraints import check_corner_clearance
 from app.config import get_settings
 
 
@@ -104,14 +105,19 @@ def is_valid_shift(
     min_support_ratio: float,
     placed_data: Optional[List[Any]] = None,
     placed_postures: Optional[List[Posture]] = None,
+    container_dims: Optional[Dimensions] = None,
 ) -> bool:
-    """Validate that moving box i to new_bbox preserves support constraints.
+    """Validate that moving box i to new_bbox preserves support and corner clearance constraints.
 
-    1. If new_bbox is above the floor, it must have at least min_support_ratio
+    1. Moving box must not intersect any top-corner obstruction cuboids.
+    2. If new_bbox is above the floor, it must have at least min_support_ratio
        support from the boxes underneath it.
-    2. Any box resting on old_bbox must continue to have at least min_support_ratio
+    3. Any box resting on old_bbox must continue to have at least min_support_ratio
        support after box i is moved.
     """
+    if container_dims is not None and not check_corner_clearance(new_bbox, container_dims):
+        return False
+
     old_bbox = current_bboxes[i]
     current_bboxes[i] = new_bbox
 
@@ -133,39 +139,6 @@ def is_valid_shift(
     return True
 
 
-def _lifo_ok_after_move(
-    i: int,
-    new_bbox: BoundingBox,
-    bboxes: List[BoundingBox],
-    placed_data: List[Any],
-    is_lcl: bool,
-) -> bool:
-    """LCL gate for any compaction move (X, Y, or Z).
-    After moving unit i to new_bbox, no (early, late) pair sharing a Y-Z
-    cross-section may have the late unit closer to the door than the early unit's rear face.
-    Order-independent, so it is valid for X, Y and Z moves alike.
-    Non-LCL always passes.
-    """
-    if not is_lcl:
-        return True
-    seq_i = getattr(placed_data[i], 'customer_sequence', 0)
-    for j, b_j in enumerate(bboxes):
-        if j == i:
-            continue
-        seq_j = getattr(placed_data[j], 'customer_sequence', 0)
-        if seq_i == seq_j or not new_bbox.overlaps_yz(b_j):
-            continue
-        if seq_i < seq_j:
-            # i unloads earlier (nearer door, larger x); j unloads later (deeper, smaller x)
-            if b_j.max_x > new_bbox.min_x + 1e-6:
-                return False
-        else:
-            # j unloads earlier (nearer door, larger x); i unloads later (deeper, smaller x)
-            if new_bbox.max_x > b_j.min_x + 1e-6:
-                return False
-    return True
-
-
 def compact_x_rear(
     placed_bboxes: List[BoundingBox],
     placed_data: List[Any],
@@ -178,8 +151,7 @@ def compact_x_rear(
 
     Slide placed boxes toward the rear wall (decreasing x, toward x=0) without
     colliding with any box that overlaps in both y and z and sits behind it,
-    without breaking vertical support for the moved box or boxes resting on it,
-    and in LCL mode without violating customer sequence depth ordering.
+    and without breaking vertical support for the moved box or boxes resting on it.
     Boxes are processed rear-most first (lowest min_x to highest).
     """
     if min_support_ratio is None:
@@ -220,8 +192,7 @@ def compact_x_rear(
                 b_i.max_z,
                 is_door_anchor=b_i.is_door_anchor,
             )
-            if (is_valid_shift(i, candidate, placed_bboxes, min_support_ratio, placed_data=placed_data, placed_postures=placed_postures)
-                    and _lifo_ok_after_move(i, candidate, placed_bboxes, placed_data, is_lcl)):
+            if is_valid_shift(i, candidate, placed_bboxes, min_support_ratio, placed_data=placed_data, placed_postures=placed_postures, container_dims=container_dims):
                 placed_bboxes[i] = candidate
 
     return placed_bboxes
@@ -280,8 +251,7 @@ def compact_y_sidewall(
                 b_i.max_z,
                 is_door_anchor=b_i.is_door_anchor,
             )
-            if (is_valid_shift(i, candidate, placed_bboxes, min_support_ratio, placed_data=placed_data, placed_postures=placed_postures)
-                    and _lifo_ok_after_move(i, candidate, placed_bboxes, placed_data, is_lcl)):
+            if is_valid_shift(i, candidate, placed_bboxes, min_support_ratio, placed_data=placed_data, placed_postures=placed_postures, container_dims=container_dims):
                 placed_bboxes[i] = candidate
 
     return placed_bboxes
@@ -354,8 +324,7 @@ def compact_z_downward(
                             valid = False
                             break
 
-            if (valid and is_valid_shift(i, candidate, placed_bboxes, min_support_ratio, placed_data=placed_data, placed_postures=placed_postures)
-                    and _lifo_ok_after_move(i, candidate, placed_bboxes, placed_data, is_lcl)):
+            if valid and is_valid_shift(i, candidate, placed_bboxes, min_support_ratio, placed_data=placed_data, placed_postures=placed_postures, container_dims=container_dims):
                 placed_bboxes[i] = candidate
 
     return placed_bboxes
@@ -565,8 +534,8 @@ def run_compaction_pass(
     unplaced: List[Tuple[Any, str]],
     container_dims: Dimensions,
     max_weight: float,
-    is_lcl: bool,
-    current_weight: float,
+    current_weight: float = 0.0,
+    is_lcl: bool = False,
     min_support_ratio: Optional[float] = None,
 ) -> Tuple[List[BoundingBox], List[Any], List[Posture], List[Tuple[Any, str]], float, FitnessResult]:
     """Execute complete post-processing compaction pass:

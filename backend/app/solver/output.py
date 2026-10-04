@@ -176,42 +176,6 @@ def shift_downward_cartons(boxes: List[PlacedBox], is_lcl: bool = False) -> List
                     if o_z2 > highest_z:
                         highest_z = o_z2
 
-        # In LCL mode, ensure dropping to highest_z does not create a LIFO violation
-        # with any other customer's carton.
-        if is_lcl:
-            for j in range(len(boxes)):
-                if i == j:
-                    continue
-                o = boxes[j]
-                if o.customer_sequence == b.customer_sequence:
-                    continue
-                # Check Y overlap
-                o_y1, o_y2 = o.y, o.y + o.actual_width
-                if min(b_y2, o_y2) - max(b_y1, o_y1) <= 1e-4:
-                    continue
-
-                # Check if their X coordinates would violate LIFO if they overlap in Z
-                # In new convention: earlier drop-off must be nearer door (larger x)
-                o_x1, o_x2 = o.x, o.x + o.actual_length
-                o_z2 = o.z + o.actual_height
-
-                violates_x = False
-                if b.customer_sequence < o.customer_sequence:
-                    # b unloads earlier (near door, larger x); o unloads later (deeper, smaller x)
-                    # LIFO requires o_x2 <= b_x1 + 1e-6
-                    if o_x2 > b_x1 + 1e-6:
-                        violates_x = True
-                else:
-                    # o unloads earlier (near door, larger x); b unloads later (deeper, smaller x)
-                    # LIFO requires b_x2 <= o_x1 + 1e-6
-                    if b_x2 > o_x1 + 1e-6:
-                        violates_x = True
-
-                if violates_x:
-                    # If b is currently at or above o, b cannot drop below o's top face
-                    if b.z >= o_z2 - 1e-4:
-                        if o_z2 > highest_z:
-                            highest_z = o_z2
 
         # Verify support ratio and weight hierarchy before dropping to highest_z
         if highest_z > 0.0:
@@ -352,8 +316,6 @@ def build_unplaced_cartons(
         seen_box_ids.add(box.box_id)
         
         reason = UnplacedReason.NO_SPACE
-        if is_lcl:
-            reason = UnplacedReason.NO_SPACE
         result.append(
             UnplacedCarton(
                 box_id=box.box_id,
@@ -376,8 +338,6 @@ def build_unplaced_cartons(
             seen_box_ids.add(content.box_id)
             
             reason = UnplacedReason.NO_SPACE
-            if is_lcl:
-                reason = UnplacedReason.NO_SPACE
             result.append(
                 UnplacedCarton(
                     box_id=content.box_id,

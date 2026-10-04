@@ -25,8 +25,8 @@ from app.solver.constraints import (
     check_weight_capacity,
     check_non_overlap,
     check_container_bounds,
+    check_corner_clearance,
     check_stackability,
-    check_lifo,
 )
 from app.solver.placement import _add_box_extreme_points, is_better_tie_break
 from app.solver.fitness import calculate_fitness, FitnessResult
@@ -34,12 +34,10 @@ from app.solver.fitness import calculate_fitness, FitnessResult
 
 def get_geometry_signature(box: Box) -> Tuple:
     """Compute the geometry signature for a box:
-    (customer_sequence, sorted_dims, this_way_up, weight_rounded_1kg).
-    Guarantees that groups never cross customer boundaries in LCL mode.
+    (sorted_dims, this_way_up, weight_rounded_1kg).
     """
     sorted_dims = tuple(sorted([round(box.length_cm, 1), round(box.width_cm, 1), round(box.height_cm, 1)]))
     return (
-        box.customer_sequence,
         sorted_dims,
         box.this_way_up,
         round(box.weight_kg),
@@ -71,7 +69,7 @@ def form_carton_groups(boxes: List[Box], group_key: str = "geometry") -> List[Ca
 
     for box in boxes:
         if group_key == "item_id":
-            key = (box.customer_sequence, box.item_id)
+            key = box.item_id
         else:  # geometry
             key = get_geometry_signature(box)
 
@@ -83,14 +81,14 @@ def form_carton_groups(boxes: List[Box], group_key: str = "geometry") -> List[Ca
     carton_groups = []
     for idx, key in enumerate(order_list):
         cartons = groups_dict[key]
-        cust_seq = cartons[0].customer_sequence
+        cust_seq = getattr(cartons[0], "customer_sequence", 0)
         permitted = cartons[0].permitted_postures
         carton_groups.append(
             CartonGroup(
                 group_index=idx,
-                group_id=f"GRP_{idx}_{key[1] if group_key=='item_id' else 'geom'}",
+                group_id=f"GRP_{idx}_{key if group_key=='item_id' else 'geom'}",
                 customer_sequence=cust_seq,
-                signature=key,
+                signature=key if isinstance(key, tuple) else (key,),
                 cartons=cartons,
                 permitted_postures=permitted,
             )
@@ -124,26 +122,8 @@ class GroupIndividual:
         )
 
     def ordered_lots(self, groups: List[CartonGroup], is_lcl: bool = False) -> List[GroupLot]:
-        """Return lots in placement order, respecting customer separation in LCL."""
-        if not is_lcl:
-            return sorted(self.lots, key=lambda l: l.order_key)
-
-        # In LCL, group by customer sequence descending (later drop-off placed first)
-        # Partition lots by customer sequence
-        cust_map = {g.group_index: g.customer_sequence for g in groups}
-        # Group by customer sequence
-        from collections import defaultdict
-        cust_lots = defaultdict(list)
-        for lot in self.lots:
-            c_seq = cust_map[lot.group_index]
-            cust_lots[c_seq].append(lot)
-
-        sorted_seqs = sorted(cust_lots.keys(), reverse=True)
-        ordered = []
-        for seq in sorted_seqs:
-            # Sort within customer by order_key
-            ordered.extend(sorted(cust_lots[seq], key=lambda l: l.order_key))
-        return ordered
+        """Return lots in placement order."""
+        return sorted(self.lots, key=lambda l: l.order_key)
 
 
 def create_group_individual(groups: List[CartonGroup]) -> GroupIndividual:
@@ -447,7 +427,7 @@ def decode_group_individual_dynamic(
     groups: List[CartonGroup],
     container_dims: Dimensions,
     max_weight: float,
-    is_lcl: bool,
+    is_lcl: bool = False,
     use_dynamic_blocks: bool = True,
 ) -> Tuple[List[BoundingBox], List[Box], List[Tuple[Box, str]], float, List[Posture]]:
     """Decode a group individual.
@@ -462,7 +442,7 @@ def decode_group_individual_dynamic(
     residual_wt = settings.RESIDUAL_VOLUME_WEIGHT
     c_vol = container_dims.volume()
     cL, cW, cH = container_dims.length, container_dims.width, container_dims.height
-    wall_penalty = getattr(settings, "WALL_FIRST_PENALTY", 2.0) if not is_lcl else 10.0
+    wall_penalty = getattr(settings, "WALL_FIRST_PENALTY", 2.0)
 
     placed_grids = []
     placed_grid_bboxes: List[BoundingBox] = []
@@ -551,6 +531,10 @@ def decode_group_individual_dynamic(
                         if not check_container_bounds(cand_bbox, container_dims):
                             continue
 
+                        # Corner clearance check
+                        if not check_corner_clearance(cand_bbox, container_dims):
+                            continue
+
                         # Overlap check
                         if not check_non_overlap(cand_bbox, placed_grid_bboxes):
                             continue
@@ -564,10 +548,6 @@ def decode_group_individual_dynamic(
                             ep, nx, ny, c_act.length + gap, c_act.width + gap,
                             c_act, rep_box.weight_kg, placed_grids
                         ):
-                            continue
-
-                        # LIFO check for LCL
-                        if is_lcl and not check_lifo(cand_bbox, placed_grid_bboxes, placed_grid_data, group.customer_sequence):
                             continue
 
                         # All constraints passed! Compute scoring
@@ -675,8 +655,8 @@ def evaluate_group_individual(
     groups: List[CartonGroup],
     container_dims: Dimensions,
     max_weight: float,
-    is_lcl: bool,
-    use_dynamic_blocks: bool,
+    is_lcl: bool = False,
+    use_dynamic_blocks: bool = False,
 ) -> GroupIndividual:
     if ind.fitness_result is not None:
         return ind
@@ -699,9 +679,9 @@ def group_genetic_algorithm(
     groups: List[CartonGroup],
     container_dims: Dimensions,
     max_weight: float,
-    is_lcl: bool,
-    population_size: int,
-    generations: int,
+    is_lcl: bool = False,
+    population_size: int = 60,
+    generations: int = 100,
     use_dynamic_blocks: bool = False,
     progress_callback: Optional[Any] = None,
 ) -> GroupIndividual:

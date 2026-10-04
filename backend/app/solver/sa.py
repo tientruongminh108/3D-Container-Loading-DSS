@@ -16,8 +16,8 @@ def run_simulated_annealing(
     boxes_sorted: List[Box],
     best_individual: "Individual",
     best_fitness: float,
-    is_lcl: bool,
-    max_weight: float,
+    is_lcl: bool = False,
+    max_weight: float = 0.0,
     auto_tune: bool = False,
 ) -> Tuple["Individual", float]:
     """
@@ -153,7 +153,7 @@ def simulated_annealing(
     units: List[Box],
     container_dims: Dimensions,
     max_weight: float,
-    is_lcl: bool,
+    is_lcl: bool = False,
     initial_temp: float = None,
     cooling_rate: float = None,
     iterations_per_temp: int = None,

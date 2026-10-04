@@ -26,10 +26,10 @@ from app.solver.block_generation import Block
 from app.solver.constraints import (
     PlacementCandidate,
     check_all_constraints,
+    check_corner_clearance,
     check_weight_capacity,
     check_non_overlap,
     check_stackability,
-    check_lifo,
 )
 
 
@@ -58,12 +58,7 @@ def corner_points_for(
       2: Door-Left:   (max(0, L - dx), 0, 0)
       3: Door-Right:  (max(0, L - dx), max(0, W - dy), 0)
 
-    For FCL: All 4 bottom corners are offered.
-    For LCL:
-      - The deepest customer (customer_sequence == last_customer_sequence)
-        is offered only rear corners (0, 1) to respect rear-to-door LIFO ordering.
-      - Door corners (2, 3) are strictly prohibited for late customers to prevent
-        blocking early drop-off customers at the door.
+    All 4 bottom corners are offered.
     """
     if occupied_corners is None:
         occupied_corners = set()
@@ -78,13 +73,7 @@ def corner_points_for(
         (3, ExtremePoint(max(0.0, cL - dx), max(0.0, cW - dy), 0.0)),
     ]
 
-    if shipment_type == "LCL":
-        if box.customer_sequence == last_customer_sequence:
-            candidate_corners = [c for c in all_corners if c[0] in (0, 1)]
-        else:
-            candidate_corners = []
-    else:  # FCL
-        candidate_corners = all_corners
+    candidate_corners = all_corners
 
     valid = []
     for cid, c in candidate_corners:
@@ -135,15 +124,17 @@ def find_best_placement(
     container_dims: Dimensions,
     current_weight: float,
     max_weight: float,
-    is_lcl: bool,
-    extreme_points: List[ExtremePoint],
+    is_lcl: bool = False,
+    extreme_points: List[ExtremePoint] = None,
     last_customer_sequence: int = 0,
     placed_postures: Optional[List[Posture]] = None,
 ) -> Tuple[Optional[PlacementResult], str]:
     """
     Find the best placement for a box.
-    Returns (PlacementResult or None, reason) where reason is 'no_space' or 'lifo_blocked'.
+    Returns (PlacementResult or None, reason) where reason is 'no_space' or 'placed'.
     """
+    if extreme_points is None:
+        extreme_points = []
     settings = get_settings()
     if not check_weight_capacity(current_weight, box.weight_kg, max_weight):
         return None, "weight_capacity"
@@ -166,7 +157,6 @@ def find_best_placement(
     best_result = None
     best_score = -float('inf')
     best_overrun = float('inf')
-    saw_lifo_only_rejection = False
 
     # Extract candidate item_id using the shared helper
     box_item_id = get_unit_item_id(box)
@@ -212,17 +202,16 @@ def find_best_placement(
                 ep_z + inflated_dims.height,
             )
 
+            # Fast corner clearance check
+            if not check_corner_clearance(candidate_bbox, container_dims):
+                continue
+
             # Fast non-overlap check
             if not check_non_overlap(candidate_bbox, placed_boxes):
                 continue
 
             # Stackability check
             if not check_stackability(candidate_bbox, placed_boxes, box, placed_boxes_data, posture=posture, placed_postures=placed_postures):
-                continue
-
-            # LIFO check for LCL
-            if is_lcl and not check_lifo(candidate_bbox, placed_boxes, placed_boxes_data, box.customer_sequence):
-                saw_lifo_only_rejection = True
                 continue
 
             contact_ratio = calculate_contact_ratio(candidate_bbox, placed_boxes, container_dims)
@@ -319,8 +308,6 @@ def find_best_placement(
 
     if best_result is not None:
         return best_result, "placed"
-    elif saw_lifo_only_rejection:
-        return None, "lifo_blocked"
     else:
         return None, "no_space"
 
@@ -388,7 +375,7 @@ def place_boxes_greedy(
     boxes: List[Box],
     container_dims: Dimensions,
     max_weight: float,
-    is_lcl: bool,
+    is_lcl: bool = False,
     last_customer_sequence: int = 0,
 ) -> Tuple[List[BoundingBox], List[Box], List[Tuple[Box, str]], float]:
     """Greedy placement with corner-first seeding and downward projection."""
@@ -403,7 +390,7 @@ def place_boxes_greedy(
     seen_points = {ExtremePoint(0, 0, 0)}
     corner_phase = True
     occupied_corners: Set[int] = set()
-    max_corners = 2 if is_lcl else 4
+    max_corners = 4
     corner_consecutive_failures = 0  # Change 7: track consecutive failures
     placement_count = 0  # Change 4: for periodic EP pruning
 
@@ -418,7 +405,7 @@ def place_boxes_greedy(
                 dims, inflated_dims = get_unit_inflated_dims(box, posture)
                 corners = corner_points_for(
                     box, inflated_dims, container_dims,
-                    "LCL" if is_lcl else "FCL",
+                    "FCL",
                     last_customer_sequence,
                     occupied_corners,
                 )
@@ -510,7 +497,7 @@ def place_blocks_greedy(
     blocks: List[Block],
     container_dims: Dimensions,
     max_weight: float,
-    is_lcl: bool,
+    is_lcl: bool = False,
     last_customer_sequence: int = 0,
 ) -> Tuple[List[BoundingBox], List[Block], List[Block], float]:
     placed_bboxes = []
@@ -601,7 +588,7 @@ def decode_chromosome(
     units: List[Box],
     container_dims: Dimensions,
     max_weight: float,
-    is_lcl: bool,
+    is_lcl: bool = False,
 ) -> Tuple[List[BoundingBox], List[Box], List[Tuple[Box, str]], float, List[Posture]]:
     """
     Decode a chromosome into a loading plan.
@@ -620,7 +607,7 @@ def decode_chromosome(
     seen_points = {ExtremePoint(0, 0, 0)}
     corner_phase = True
     occupied_corners: Set[int] = set()
-    max_corners = 2 if is_lcl else 4
+    max_corners = 4
     corner_consecutive_failures = 0  # Change 7: consecutive corner failure counter
     placement_count = 0  # Change 4: for periodic EP pruning
     last_customer_sequence = max(u.customer_sequence for u in units) if units else 0
@@ -648,7 +635,7 @@ def decode_chromosome(
                 box_dims, inflated_dims = get_unit_inflated_dims(box, posture)
                 corners = corner_points_for(
                     box, inflated_dims, container_dims,
-                    "LCL" if is_lcl else "FCL",
+                    "FCL",
                     last_customer_sequence,
                     occupied_corners,
                 )

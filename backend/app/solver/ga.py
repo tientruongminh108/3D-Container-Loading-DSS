@@ -80,30 +80,11 @@ class Individual:
     placed_postures: Optional[List[Posture]] = None
 
     def placement_order(self, units: Optional[List[Box]] = None) -> List[int]:
-        """Return indices into `units`/`chromosome` in placement sequence.
-
-        When `units` is given, the returned order is first clamped so no
-        unit crosses its own customer_sequence group boundary (see
-        _customer_group_bounds). This is enforced here -- once, at the one
-        place order_keys actually gets turned into a sequence -- rather
-        than in every crossover/mutation/SA operator individually, so the
-        LCL customer-separation/LIFO invariant holds regardless of how the
-        keys were perturbed upstream. Without `units` (e.g. legacy callers)
-        this falls back to a plain unclamped argsort.
-        """
+        """Return indices into `units`/`chromosome` in placement sequence."""
         n = len(self.chromosome)
         if not self.order_keys:
             return list(range(n))
-
-        if units is None:
-            return sorted(range(len(self.order_keys)), key=lambda i: self.order_keys[i])
-
-        bounds = _customer_group_bounds(units)
-        order: List[int] = []
-        for lo, hi in _distinct_bounds(bounds):
-            group = sorted(range(lo, hi), key=lambda i: self.order_keys[i])
-            order.extend(group)
-        return order
+        return sorted(range(len(self.order_keys)), key=lambda i: self.order_keys[i])
 
     def clone(self) -> "Individual":
         """Fast shallow clone for GA/SA population operations.
@@ -147,21 +128,9 @@ def create_individual(units: List[Box], order_jitter: float = 0.0) -> Individual
 
     n = len(units)
     if order_jitter > 0:
-        # Identity order (0, 1, 2, ...) plus small random jitter so the
-        # resulting argsort is a local perturbation of the heuristic sort
-        # rather than a uniform-random shuffle. This keeps the population
-        # concentrated near the (already good) heuristic ordering while
-        # still letting GA/SA explore nearby permutations. Jitter is capped
-        # so it can never push a unit's key outside its own customer's
-        # contiguous index range (see _customer_group_bounds) -- this is
-        # what keeps LCL customer separation / LIFO intact under
-        # perturbation; for FCL every unit shares one group so this is a
-        # no-op there.
-        bounds = _customer_group_bounds(units)
         order_keys = []
         for i in range(n):
-            lo, hi = bounds[i]
-            jitter = min(order_jitter, (i - lo), (hi - 1 - i))
+            jitter = min(order_jitter, float(i), float(n - 1 - i))
             jitter = max(0.0, jitter)
             order_keys.append(i + random.uniform(-jitter, jitter))
     else:
@@ -175,7 +144,7 @@ def evaluate_individual(
     units: List[Box],
     container_dims: Dimensions,
     max_weight: float,
-    is_lcl: bool,
+    is_lcl: bool = False,
 ) -> Individual:
     order = individual.placement_order(units)
     ordered_units = [units[i] for i in order]
@@ -299,7 +268,7 @@ def genetic_algorithm(
     units: List[Box],
     container_dims: Dimensions,
     max_weight: float,
-    is_lcl: bool,
+    is_lcl: bool = False,
     population_size: int = None,
     generations: int = None,
     elite_fraction: float = None,
