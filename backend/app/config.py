@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     MUTATION_RATE_MIN: float = 0.10
     CROSSOVER_PROBABILITY: float = 0.7
     MIN_IMPROVEMENT: float = 0.01
-    EARLY_STOP_PATIENCE: int = 60
+    EARLY_STOP_PATIENCE: int = 40
 
     # Simulated Annealing (embedded in GA)
     SA_INTERVAL_GENERATIONS: int = 5

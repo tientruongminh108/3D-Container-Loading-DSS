@@ -945,11 +945,16 @@ def group_genetic_algorithm(
             new_pop.sort(key=lambda x: x.fitness_result.fitness if x.fitness_result else -float('inf'), reverse=True)
             pop = new_pop
 
-            if pop[0].fitness_result and pop[0].fitness_result.fitness > best_ind.fitness_result.fitness + settings.MIN_IMPROVEMENT:
+            best_fitness_before = best_ind.fitness_result.fitness if best_ind.fitness_result else -float('inf')
+            current_best_fitness = pop[0].fitness_result.fitness if pop[0].fitness_result else -float('inf')
+
+            if current_best_fitness > best_fitness_before + settings.MIN_IMPROVEMENT:
                 best_ind = pop[0].clone()
                 stagnant_gens = 0
             else:
                 stagnant_gens += 1
+                if current_best_fitness > best_fitness_before:
+                    best_ind = pop[0].clone()
 
             if progress_callback:
                 progress_callback(gen, best_ind)
