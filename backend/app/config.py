@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     WALL_FIRST_SECONDARY_ORDER: str = "ZY"  # "ZY" (lower z then smaller y) or "YZ" (smaller y then lower z)
     WALL_FIRST_PENALTY: float = 2.0  # Overrun penalty for FCL dynamic blocks branch
     DEAD_SPACE_WEIGHT: float = 1.5  # Penalty for unusable roof headroom left by a dynamic grid (0 disables)
+    EP_CANDIDATE_LIMIT: int = 100  # Max extreme points evaluated per lot step in group decoder
+    GA_WORKERS: int = 0  # Process workers for GA evaluation (0=auto: 2 if standalone, 1 if nested)
     TOLERANCE_GAP_CM: float = 0.0
     SUPPORT_RATIO: float = 0.6
     CONTACT_RATIO_WEIGHT: float = 1.0

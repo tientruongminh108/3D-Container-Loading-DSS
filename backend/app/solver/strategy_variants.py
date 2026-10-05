@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 import copy
 import random
 import math
+import os
+from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 
 from app.config import get_settings
@@ -29,6 +31,32 @@ from app.solver.constraints import (
 )
 from app.solver.placement import _add_box_extreme_points, is_better_tie_break
 from app.solver.fitness import calculate_fitness, FitnessResult
+
+_worker_groups = None
+_worker_container_dims = None
+_worker_max_weight = None
+_worker_is_lcl = None
+_worker_use_dynamic_blocks = None
+
+
+def _init_eval_worker(groups, container_dims, max_weight, is_lcl, use_dynamic_blocks):
+    global _worker_groups, _worker_container_dims, _worker_max_weight, _worker_is_lcl, _worker_use_dynamic_blocks
+    _worker_groups = groups
+    _worker_container_dims = container_dims
+    _worker_max_weight = max_weight
+    _worker_is_lcl = is_lcl
+    _worker_use_dynamic_blocks = use_dynamic_blocks
+
+
+def _eval_single_ind(ind: "GroupIndividual") -> "GroupIndividual":
+    return evaluate_group_individual(
+        ind,
+        _worker_groups,
+        _worker_container_dims,
+        _worker_max_weight,
+        _worker_is_lcl,
+        _worker_use_dynamic_blocks,
+    )
 
 
 def get_geometry_signature(box: Box) -> Tuple:
@@ -322,32 +350,37 @@ def compute_free_cuboid_at_ep(
 ) -> Tuple[float, float, float]:
     """Compute maximal available space (avail_dx, avail_dy, avail_dz) at an extreme point."""
     cL, cW, cH = container_dims.length, container_dims.width, container_dims.height
-    avail_dx = max(0.0, cL - ep.x)
-    avail_dy = max(0.0, cW - ep.y)
-    avail_dz = max(0.0, cH - ep.z)
+    ex, ey, ez = ep.x, ep.y, ep.z
+    avail_dx = max(0.0, cL - ex)
+    avail_dy = max(0.0, cW - ey)
+    avail_dz = max(0.0, cH - ez)
 
-    # Tighten bounds if there is an obstacle directly in front / side / top
     for pb in placed_bboxes:
+        px1, px2, py1, py2, pz1, pz2 = pb.min_x, pb.max_x, pb.min_y, pb.max_y, pb.min_z, pb.max_z
+        # Quick rejection: if pb is completely behind or outside the cuboid in all dimensions
+        if px2 <= ex + 1e-4 and py2 <= ey + 1e-4 and pz2 <= ez + 1e-4:
+            continue
+
         # Obstacle ahead in X (overlaps in Y and Z)
-        if pb.min_x >= ep.x - 1e-4:
-            if (min(ep.y + avail_dy, pb.max_y) > max(ep.y, pb.min_y) + 1e-4 and
-                min(ep.z + avail_dz, pb.max_z) > max(ep.z, pb.min_z) + 1e-4):
-                if pb.min_x - ep.x > 1e-4:
-                    avail_dx = min(avail_dx, pb.min_x - ep.x)
+        if px1 >= ex - 1e-4:
+            if min(ey + avail_dy, py2) > max(ey, py1) + 1e-4 and min(ez + avail_dz, pz2) > max(ez, pz1) + 1e-4:
+                d = px1 - ex
+                if d > 1e-4 and d < avail_dx:
+                    avail_dx = d
 
         # Obstacle to the right in Y (overlaps in X and Z)
-        if pb.min_y >= ep.y - 1e-4:
-            if (min(ep.x + avail_dx, pb.max_x) > max(ep.x, pb.min_x) + 1e-4 and
-                min(ep.z + avail_dz, pb.max_z) > max(ep.z, pb.min_z) + 1e-4):
-                if pb.min_y - ep.y > 1e-4:
-                    avail_dy = min(avail_dy, pb.min_y - ep.y)
+        if py1 >= ey - 1e-4:
+            if min(ex + avail_dx, px2) > max(ex, px1) + 1e-4 and min(ez + avail_dz, pz2) > max(ez, pz1) + 1e-4:
+                d = py1 - ey
+                if d > 1e-4 and d < avail_dy:
+                    avail_dy = d
 
         # Obstacle above in Z (overlaps in X and Y)
-        if pb.min_z >= ep.z - 1e-4:
-            if (min(ep.x + avail_dx, pb.max_x) > max(ep.x, pb.min_x) + 1e-4 and
-                min(ep.y + avail_dy, pb.max_y) > max(ep.y, pb.min_y) + 1e-4):
-                if pb.min_z - ep.z > 1e-4:
-                    avail_dz = min(avail_dz, pb.min_z - ep.z)
+        if pz1 >= ez - 1e-4:
+            if min(ex + avail_dx, px2) > max(ex, px1) + 1e-4 and min(ey + avail_dy, py2) > max(ey, py1) + 1e-4:
+                d = pz1 - ez
+                if d > 1e-4 and d < avail_dz:
+                    avail_dz = d
 
     return avail_dx, avail_dy, avail_dz
 
@@ -556,6 +589,21 @@ def decode_group_individual_dynamic(
     extreme_points = [ExtremePoint(0, 0, 0)]
     seen_points = {ExtremePoint(0, 0, 0)}
     placement_count = 0
+    ep_limit = getattr(settings, "EP_CANDIDATE_LIMIT", 100)
+
+    cuboid_cache: Dict[ExtremePoint, Tuple[float, float, float]] = {}
+    current_cache_count = -1
+
+    def get_free_cuboid(ep: ExtremePoint) -> Tuple[float, float, float]:
+        nonlocal current_cache_count
+        if placement_count != current_cache_count:
+            cuboid_cache.clear()
+            current_cache_count = placement_count
+        res = cuboid_cache.get(ep)
+        if res is None:
+            res = compute_free_cuboid_at_ep(ep, placed_grid_bboxes, container_dims)
+            cuboid_cache[ep] = res
+        return res
 
     ordered_lots = individual.ordered_lots(groups, is_lcl=is_lcl)
     # Track carton pointer per group
@@ -582,12 +630,31 @@ def decode_group_individual_dynamic(
         while rem_in_lot:
             rem_count = len(rem_in_lot)
             rep_box = rem_in_lot[0]
-            sorted_eps = sort_extreme_points(extreme_points)[:30]
 
             # Groups that still have cartons to place (this lot's group + later lots)
             rem_groups = {lot.group_index} | {l.group_index for l in ordered_lots[lot_idx + 1:]}
             min_h_rem = min(grp_min_h[g_i] for g_i in rem_groups)
             min_xy_rem = min(grp_min_xy[g_i] for g_i in rem_groups)
+            min_rem_dim = min(min_h_rem, min_xy_rem)
+            min_c_dim = min(rep_box.inflated_length, rep_box.inflated_width, rep_box.inflated_height)
+
+            sorted_all_eps = sort_extreme_points(extreme_points)
+            sorted_eps: List[ExtremePoint] = []
+            surviving_eps: List[ExtremePoint] = []
+
+            for i, ep in enumerate(sorted_all_eps):
+                avail_dx, avail_dy, avail_dz = get_free_cuboid(ep)
+                if avail_dx < min_rem_dim or avail_dy < min_rem_dim or avail_dz < min_rem_dim:
+                    # Early-reject: cannot hold even the smallest remaining carton in any orientation
+                    continue
+                surviving_eps.append(ep)
+                if avail_dx >= min_c_dim and avail_dy >= min_c_dim and avail_dz >= min_c_dim:
+                    sorted_eps.append(ep)
+                    if len(sorted_eps) >= ep_limit:
+                        surviving_eps.extend(sorted_all_eps[i + 1:])
+                        break
+
+            extreme_points = surviving_eps
 
             best_placement = None
             best_score = -float('inf')
@@ -597,9 +664,8 @@ def decode_group_individual_dynamic(
             # Wall front for wall-first overrun calculation
             front = max((b.max_x for b in placed_grid_bboxes), default=0.0)
 
-            min_c_dim = min(rep_box.inflated_length, rep_box.inflated_width, rep_box.inflated_height)
             for ep in sorted_eps:
-                avail_dx, avail_dy, avail_dz = compute_free_cuboid_at_ep(ep, placed_grid_bboxes, container_dims)
+                avail_dx, avail_dy, avail_dz = get_free_cuboid(ep)
                 if avail_dx < min_c_dim or avail_dy < min_c_dim or avail_dz < min_c_dim:
                     continue
 
@@ -805,54 +871,93 @@ def group_genetic_algorithm(
     """Genetic Algorithm operating at the Group level (Variants D and E)."""
     settings = get_settings()
     pop: List[GroupIndividual] = []
-    # Seed population with key heuristics: tall-first, volume-first, weight-first
-    for h in ["tall_first", "volume_first", "weight_first"]:
-        pop.append(create_group_individual(groups, order_heuristic=h))
-    # Fill remaining population with default CSV order and random order permutations
-    while len(pop) < population_size:
-        h = "random" if len(pop) % 2 == 0 else None
-        pop.append(create_group_individual(groups, order_heuristic=h))
+    env_workers = os.environ.get("GA_WORKERS")
+    if env_workers is not None:
+        workers = int(env_workers)
+    else:
+        workers = getattr(settings, "GA_WORKERS", 0)
+    if workers == 0:
+        workers = 2
 
-    for ind in pop:
-        evaluate_group_individual(ind, groups, container_dims, max_weight, is_lcl, use_dynamic_blocks)
+    executor = None
+    if workers > 1:
+        try:
+            executor = ProcessPoolExecutor(
+                max_workers=workers,
+                initializer=_init_eval_worker,
+                initargs=(groups, container_dims, max_weight, is_lcl, use_dynamic_blocks),
+            )
+        except Exception:
+            executor = None
 
-    pop.sort(key=lambda x: x.fitness_result.fitness if x.fitness_result else -float('inf'), reverse=True)
-    best_ind = pop[0].clone()
-    patience = settings.EARLY_STOP_PATIENCE
-    stagnant_gens = 0
-
-    for gen in range(1, generations + 1):
-        # Elitism
-        n_elite = max(1, int(settings.ELITE_FRACTION * population_size))
-        new_pop = [ind.clone() for ind in pop[:n_elite]]
-
-        # Selection & Reproduction
-        while len(new_pop) < population_size:
-            p1 = random.choice(pop[:max(2, population_size // 2)])
-            p2 = random.choice(pop[:max(2, population_size // 2)])
-            c1, c2 = crossover_group_individuals(p1, p2, settings.CROSSOVER_PROBABILITY)
-            c1 = mutate_group_individual(c1, groups, settings.MUTATION_RATE_BASE)
-            new_pop.append(c1)
-            if len(new_pop) < population_size:
-                c2 = mutate_group_individual(c2, groups, settings.MUTATION_RATE_BASE)
-                new_pop.append(c2)
-
-        for ind in new_pop[n_elite:]:
-            evaluate_group_individual(ind, groups, container_dims, max_weight, is_lcl, use_dynamic_blocks)
-
-        new_pop.sort(key=lambda x: x.fitness_result.fitness if x.fitness_result else -float('inf'), reverse=True)
-        pop = new_pop
-
-        if pop[0].fitness_result and pop[0].fitness_result.fitness > best_ind.fitness_result.fitness + settings.MIN_IMPROVEMENT:
-            best_ind = pop[0].clone()
-            stagnant_gens = 0
+    def _eval_population(ind_list: List[GroupIndividual]):
+        to_eval = [ind for ind in ind_list if ind.fitness_result is None]
+        if not to_eval:
+            return
+        if executor is not None:
+            chunk = max(1, len(to_eval) // (workers * 2))
+            results = list(executor.map(_eval_single_ind, to_eval, chunksize=chunk))
+            for orig, res in zip(to_eval, results):
+                orig.placed_bboxes = res.placed_bboxes
+                orig.placed_data = res.placed_data
+                orig.unplaced = res.unplaced
+                orig.current_weight = res.current_weight
+                orig.placed_postures = res.placed_postures
+                orig.fitness_result = res.fitness_result
         else:
-            stagnant_gens += 1
+            for ind in to_eval:
+                evaluate_group_individual(ind, groups, container_dims, max_weight, is_lcl, use_dynamic_blocks)
 
-        if progress_callback:
-            progress_callback(gen, best_ind)
+    try:
+        # Seed population with key heuristics: tall-first, volume-first, weight-first
+        for h in ["tall_first", "volume_first", "weight_first"]:
+            pop.append(create_group_individual(groups, order_heuristic=h))
+        # Fill remaining population with default CSV order and random order permutations
+        while len(pop) < population_size:
+            h = "random" if len(pop) % 2 == 0 else None
+            pop.append(create_group_individual(groups, order_heuristic=h))
 
-        if stagnant_gens >= patience:
-            break
+        _eval_population(pop)
+
+        pop.sort(key=lambda x: x.fitness_result.fitness if x.fitness_result else -float('inf'), reverse=True)
+        best_ind = pop[0].clone()
+        patience = settings.EARLY_STOP_PATIENCE
+        stagnant_gens = 0
+
+        for gen in range(1, generations + 1):
+            # Elitism
+            n_elite = max(1, int(settings.ELITE_FRACTION * population_size))
+            new_pop = [ind.clone() for ind in pop[:n_elite]]
+
+            # Selection & Reproduction
+            while len(new_pop) < population_size:
+                p1 = random.choice(pop[:max(2, population_size // 2)])
+                p2 = random.choice(pop[:max(2, population_size // 2)])
+                c1, c2 = crossover_group_individuals(p1, p2, settings.CROSSOVER_PROBABILITY)
+                c1 = mutate_group_individual(c1, groups, settings.MUTATION_RATE_BASE)
+                new_pop.append(c1)
+                if len(new_pop) < population_size:
+                    c2 = mutate_group_individual(c2, groups, settings.MUTATION_RATE_BASE)
+                    new_pop.append(c2)
+
+            _eval_population(new_pop[n_elite:])
+
+            new_pop.sort(key=lambda x: x.fitness_result.fitness if x.fitness_result else -float('inf'), reverse=True)
+            pop = new_pop
+
+            if pop[0].fitness_result and pop[0].fitness_result.fitness > best_ind.fitness_result.fitness + settings.MIN_IMPROVEMENT:
+                best_ind = pop[0].clone()
+                stagnant_gens = 0
+            else:
+                stagnant_gens += 1
+
+            if progress_callback:
+                progress_callback(gen, best_ind)
+
+            if stagnant_gens >= patience:
+                break
+    finally:
+        if executor is not None:
+            executor.shutdown(wait=False)
 
     return best_ind
