@@ -145,6 +145,7 @@ class RunOptions(BaseModel):
     ga_level: Optional[str] = None
     dynamic_blocks: Optional[bool] = None
     post_explode_compaction: Optional[bool] = None
+    seed: Optional[int] = None
 
 
 class RunCreate(BaseModel):
@@ -280,6 +281,7 @@ class RunResult(BaseModel):
     error_message: Optional[str] = None
     options: Optional[RunOptions] = None
     planning_time_seconds: Optional[float] = None
+    seed: Optional[int] = None
 
 
 class RunSummary(BaseModel):

@@ -280,7 +280,15 @@ def genetic_algorithm(
     min_improvement: float = None,
     early_stop_patience: int = None,
     progress_callback: Callable[[int, Individual], None] = None,
+    seed: Optional[int] = None,
 ) -> Individual:
+    if seed is not None:
+        random.seed(seed)
+        try:
+            import numpy as np
+            np.random.seed(seed)
+        except ImportError:
+            pass
     settings = get_settings()
 
     pop_size = population_size or settings.POPULATION_SIZE

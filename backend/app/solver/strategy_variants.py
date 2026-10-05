@@ -39,8 +39,11 @@ _worker_is_lcl = None
 _worker_use_dynamic_blocks = None
 
 
-def _init_eval_worker(groups, container_dims, max_weight, is_lcl, use_dynamic_blocks):
+def _init_eval_worker(groups, container_dims, max_weight, is_lcl, use_dynamic_blocks, seed=None):
     global _worker_groups, _worker_container_dims, _worker_max_weight, _worker_is_lcl, _worker_use_dynamic_blocks
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
     _worker_groups = groups
     _worker_container_dims = container_dims
     _worker_max_weight = max_weight
@@ -869,8 +872,12 @@ def group_genetic_algorithm(
     generations: int = 100,
     use_dynamic_blocks: bool = False,
     progress_callback: Optional[Any] = None,
+    seed: Optional[int] = None,
 ) -> GroupIndividual:
     """Genetic Algorithm operating at the Group level (Variants D and E)."""
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
     settings = get_settings()
     pop: List[GroupIndividual] = []
     env_workers = os.environ.get("GA_WORKERS")
@@ -887,7 +894,7 @@ def group_genetic_algorithm(
             executor = ProcessPoolExecutor(
                 max_workers=workers,
                 initializer=_init_eval_worker,
-                initargs=(groups, container_dims, max_weight, is_lcl, use_dynamic_blocks),
+                initargs=(groups, container_dims, max_weight, is_lcl, use_dynamic_blocks, seed),
             )
         except Exception:
             executor = None

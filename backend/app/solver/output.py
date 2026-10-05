@@ -376,9 +376,13 @@ def build_run_result(
     error_message: str = None,
     options=None,
     planning_time_seconds: Optional[float] = None,
+    seed: Optional[int] = None,
 ) -> RunResult:
     if run_id is None:
         run_id = str(uuid.uuid4())
+
+    if seed is None and options is not None:
+        seed = getattr(options, "seed", None)
 
     if placed_bboxes is None and individual is not None:
         placed_bboxes = getattr(individual, "placed_bboxes", None)
@@ -500,4 +504,5 @@ def build_run_result(
         error_message=error_message,
         options=options,
         planning_time_seconds=planning_time_seconds,
+        seed=seed,
     )

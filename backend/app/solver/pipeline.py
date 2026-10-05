@@ -40,6 +40,13 @@ def run_pipeline(
     if progress_callback:
         progress_callback("parse", 0.05, {"message": "Parsing inputs..."})
 
+    seed = options.seed if options and options.seed is not None else None
+    if seed is not None:
+        import random
+        import numpy as np
+        random.seed(seed)
+        np.random.seed(seed)
+
     gap = float(options.tolerance_gap_cm) if options and options.tolerance_gap_cm is not None else settings.TOLERANCE_GAP_CM
 
     boxes, container_spec, preview, shipment_type = parse_and_join(
@@ -132,6 +139,7 @@ def run_pipeline(
             population_size=pop_size,
             generations=generations,
             progress_callback=ga_progress,
+            seed=seed,
         )
 
         if progress_callback:
@@ -248,6 +256,7 @@ def run_pipeline(
             population_size=pop_size,
             generations=generations,
             progress_callback=ga_progress,
+            seed=seed,
         )
 
         order = best_individual.placement_order(all_units)
@@ -304,6 +313,7 @@ def run_pipeline(
             generations=generations,
             use_dynamic_blocks=dynamic_blocks,
             progress_callback=ga_progress_group,
+            seed=seed,
         )
 
         placed_bboxes, placed_data, unplaced, current_weight, placed_postures = decode_group_individual_dynamic(
@@ -367,6 +377,7 @@ def run_pipeline(
         status=RunStatus.COMPLETED.value,
         options=options,
         planning_time_seconds=planning_time_sec,
+        seed=seed,
     )
 
     if progress_callback:
