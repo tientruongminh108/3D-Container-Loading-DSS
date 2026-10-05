@@ -22,6 +22,8 @@ from app.solver.geometry import (
     calculate_contact_ratio,
     calculate_residual_volume,
     check_support_ratio,
+    unit_weight,
+    unit_footprint,
 )
 from app.solver.constraints import (
     check_weight_capacity,
@@ -503,7 +505,7 @@ def check_grid_cartons_stackability(
             p_gap = max(p_gap_x, p_gap_y)
             p_dx_c = p_c_act.length + p_gap
             p_dy_c = p_c_act.width + p_gap
-            p_unit_wt = p_rep.weight_kg
+            p_unit_wt = unit_weight(p_rep)
 
             for p_ix in range(p_nx):
                 for p_iy in range(p_ny):
@@ -516,7 +518,7 @@ def check_grid_cartons_stackability(
     if not sup_surfaces:
         return False
 
-    c_footprint = c_act.length * c_act.width
+    c_footprint = unit_footprint(c_act)
     if c_footprint <= 0:
         return False
     min_contact = c_footprint * min_support_ratio - 1e-4
@@ -570,6 +572,8 @@ def decode_group_individual_dynamic(
     cL, cW, cH = container_dims.length, container_dims.width, container_dims.height
     wall_penalty = getattr(settings, "WALL_FIRST_PENALTY", 2.0)
     dead_space_wt = getattr(settings, "DEAD_SPACE_WEIGHT", 0.0)
+    min_usable_shelf_cm = getattr(settings, "MIN_USABLE_SHELF_CM", 0.0)
+    shelf_occupancy_ratio = getattr(settings, "SHELF_OCCUPANCY_RATIO", 1.0)
 
     # Smallest vertical / horizontal dimension each group can present in any permitted
     # posture; used to tell whether leftover headroom or a lateral sliver is still usable.
@@ -647,9 +651,11 @@ def decode_group_individual_dynamic(
             sorted_eps: List[ExtremePoint] = []
             surviving_eps: List[ExtremePoint] = []
 
+            effective_min_dim = max(min_rem_dim, min_usable_shelf_cm) if min_usable_shelf_cm > 0 else min_rem_dim
+
             for i, ep in enumerate(sorted_all_eps):
                 avail_dx, avail_dy, avail_dz = get_free_cuboid(ep)
-                if avail_dx < min_rem_dim or avail_dy < min_rem_dim or avail_dz < min_rem_dim:
+                if avail_dx < effective_min_dim or avail_dy < effective_min_dim or avail_dz < effective_min_dim:
                     # Early-reject: cannot hold even the smallest remaining carton in any orientation
                     continue
                 surviving_eps.append(ep)
@@ -740,7 +746,7 @@ def decode_group_individual_dynamic(
                         y_cov_bonus = 0.0
                         if cand_bbox.min_y <= 1e-4 and cand_bbox.max_y >= cW - 1e-4:
                             y_cov_bonus = 4.0
-                        elif g_infl.width >= avail_dy - 1e-4:
+                        elif g_infl.width >= (avail_dy * shelf_occupancy_ratio) - 1e-4:
                             y_cov_bonus = 2.0
 
                         # Cartons absorbed bonus (rewards multi-box consolidation)

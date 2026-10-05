@@ -508,3 +508,27 @@ def prune_dominated_extreme_points(points: List[ExtremePoint]) -> List[ExtremePo
             pruned.append(p)
 
     return pruned
+
+
+def unit_weight(u: Any) -> float:
+    """Return the unit weight for a single Box, a Block, or other carton container."""
+    if hasattr(u, "boxes") and u.boxes:
+        return u.boxes[0].weight_kg
+    if hasattr(u, "contents") and u.contents:
+        return u.contents[0].weight_kg
+    return float(getattr(u, "weight_kg", 0.0))
+
+
+def unit_footprint(u: Any, posture: Optional[Posture] = None) -> float:
+    """Return the 2D horizontal footprint (length * width) of a Box, Block, or Dimensions."""
+    if isinstance(u, Dimensions):
+        return u.length * u.width
+    if posture is not None:
+        l = getattr(u, "length_cm", getattr(u, "length", 0.0))
+        w = getattr(u, "width_cm", getattr(u, "width", 0.0))
+        h = getattr(u, "height_cm", getattr(u, "height", 0.0))
+        d = Dimensions(l, w, h).apply_posture(posture)
+        return d.length * d.width
+    l = getattr(u, "length_cm", getattr(u, "length", 0.0))
+    w = getattr(u, "width_cm", getattr(u, "width", 0.0))
+    return float(l * w)

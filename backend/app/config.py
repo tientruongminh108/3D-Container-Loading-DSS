@@ -68,6 +68,16 @@ class Settings(BaseSettings):
     SUPPORT_RATIO: float = 0.6
     CONTACT_RATIO_WEIGHT: float = 1.0
     RESIDUAL_VOLUME_WEIGHT: float = 1.0
+    MIN_USABLE_SHELF_CM: float = 0.0
+    SHELF_OCCUPANCY_RATIO: float = 1.0
+
+    @property
+    def min_usable_shelf_cm(self) -> float:
+        return self.MIN_USABLE_SHELF_CM
+
+    @property
+    def shelf_occupancy_ratio(self) -> float:
+        return self.SHELF_OCCUPANCY_RATIO
 
     # Constraints
     MAX_WEIGHT_UTILIZATION: float = 1.0

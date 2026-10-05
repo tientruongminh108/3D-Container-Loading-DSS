@@ -10,6 +10,8 @@ from app.solver.geometry import (
     sort_extreme_points,
     check_support_ratio,
     compute_block_content_rel_pos,
+    unit_weight,
+    unit_footprint,
 )
 from app.solver.fitness import calculate_fitness, FitnessResult
 from app.solver.placement import find_best_placement, _add_box_extreme_points
@@ -32,7 +34,7 @@ def _check_support_for_unit(
     # compact_x_rear / compact_y_sidewall only re-checked the support RATIO, so a heavy
     # carton could slide partly onto a lighter one (validator: weight_hierarchy).
     if placed_data is not None and idx < len(placed_data):
-        unit_wt = getattr(placed_data[idx], 'boxes', [placed_data[idx]])[0].weight_kg
+        unit_wt = unit_weight(placed_data[idx])
         for k, b_k in enumerate(current_bboxes):
             if k == idx or k >= len(placed_data):
                 continue
@@ -41,7 +43,7 @@ def _check_support_for_unit(
             ov_x = min(bbox.max_x, b_k.max_x) - max(bbox.min_x, b_k.min_x)
             ov_y = min(bbox.max_y, b_k.max_y) - max(bbox.min_y, b_k.min_y)
             if ov_x > 1e-4 and ov_y > 1e-4:
-                sup_wt = getattr(placed_data[k], 'boxes', [placed_data[k]])[0].weight_kg
+                sup_wt = unit_weight(placed_data[k])
                 if unit_wt > sup_wt + 1e-3:
                     return False
 
@@ -373,10 +375,10 @@ def compact_z_downward(
             # Check stackability weight constraint if resting on another box
             valid = True
             if limit_z > FLOOR_EPSILON:
-                cand_wt = getattr(placed_data[i], 'boxes', [placed_data[i]])[0].weight_kg
+                cand_wt = unit_weight(placed_data[i])
                 for j, b_j in enumerate(placed_bboxes):
                     if j != i and abs(b_j.max_z - limit_z) < 1e-4 and b_j.supports(candidate):
-                        sup_wt = getattr(placed_data[j], 'boxes', [placed_data[j]])[0].weight_kg
+                        sup_wt = unit_weight(placed_data[j])
                         if cand_wt > sup_wt + 1e-3:
                             valid = False
                             break

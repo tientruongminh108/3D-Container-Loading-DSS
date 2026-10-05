@@ -2,7 +2,7 @@ from typing import List, Tuple
 from dataclasses import dataclass
 from collections import defaultdict
 from app.config import get_settings
-from app.solver.geometry import BoundingBox, Position, calculate_cog, check_cog_balance, FLOOR_EPSILON
+from app.solver.geometry import BoundingBox, Position, calculate_cog, check_cog_balance, FLOOR_EPSILON, unit_weight
 from app.solver.parsing import Box
 from app.solver.block_generation import Block
 
@@ -80,11 +80,11 @@ def calculate_fitness(
         if bbox.min_z > FLOOR_EPSILON:
             support_area = 0.0
             footprint = (bbox.max_x - bbox.min_x) * (bbox.max_y - bbox.min_y)
-            box_unit_wt = getattr(placed_data[i], 'boxes', [placed_data[i]])[0].weight_kg
+            box_unit_wt = unit_weight(placed_data[i])
             for j, other in z_to_supporters.get(round(bbox.min_z, 6), []):
                 if other.supports(bbox):
                     support_area += other.contact_area(bbox)
-                    sup_unit_wt = getattr(placed_data[j], 'boxes', [placed_data[j]])[0].weight_kg
+                    sup_unit_wt = unit_weight(placed_data[j])
                     if box_unit_wt > sup_unit_wt + 1e-3:
                         stacking_violations += 1
             if footprint > 0 and (support_area / footprint) < settings.SUPPORT_RATIO:
