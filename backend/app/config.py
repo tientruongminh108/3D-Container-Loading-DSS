@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     WALL_FIRST_WEIGHT: float = 1.0  # Weight w for Rule C: score - w * (overrun / L)
     WALL_FIRST_SECONDARY_ORDER: str = "ZY"  # "ZY" (lower z then smaller y) or "YZ" (smaller y then lower z)
     WALL_FIRST_PENALTY: float = 2.0  # Overrun penalty for FCL dynamic blocks branch
+    DEAD_SPACE_WEIGHT: float = 1.5  # Penalty for unusable roof headroom left by a dynamic grid (0 disables)
     TOLERANCE_GAP_CM: float = 0.0
     SUPPORT_RATIO: float = 0.6
     CONTACT_RATIO_WEIGHT: float = 1.0

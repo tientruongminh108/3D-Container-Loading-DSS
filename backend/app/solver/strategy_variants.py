@@ -126,20 +126,99 @@ class GroupIndividual:
         return sorted(self.lots, key=lambda l: l.order_key)
 
 
-def create_group_individual(groups: List[CartonGroup]) -> GroupIndividual:
+def create_group_individual(
+    groups: List[CartonGroup],
+    order_heuristic: Optional[str] = None,
+) -> GroupIndividual:
     posture_genes = []
-    lots = []
     for g_idx, group in enumerate(groups):
         n_postures = len(group.permitted_postures) if group.permitted_postures else 1
         posture_genes.append(random.randrange(n_postures))
-        lots.append(
+
+    n_g = len(groups)
+    if order_heuristic == "tall_first":
+        # Tallest items placed first to utilize floor and establish vertical columns
+        ranked = sorted(
+            range(n_g),
+            key=lambda i: (
+                groups[i].customer_sequence,
+                -max(b.height_cm for b in groups[i].cartons),
+                -groups[i].cartons[0].weight_kg,
+                -(groups[i].cartons[0].length_cm * groups[i].cartons[0].width_cm * groups[i].cartons[0].height_cm),
+            ),
+        )
+        lots = [
             GroupLot(
                 group_index=g_idx,
                 lot_id=f"L_{g_idx}_0",
-                carton_count=len(group.cartons),
+                carton_count=len(groups[g_idx].cartons),
+                order_key=float(rank),
+            )
+            for rank, g_idx in enumerate(ranked)
+        ]
+    elif order_heuristic == "volume_first":
+        # Bulk items placed first
+        ranked = sorted(
+            range(n_g),
+            key=lambda i: (
+                groups[i].customer_sequence,
+                -(groups[i].cartons[0].length_cm * groups[i].cartons[0].width_cm * groups[i].cartons[0].height_cm),
+                -groups[i].cartons[0].weight_kg,
+                -max(b.height_cm for b in groups[i].cartons),
+            ),
+        )
+        lots = [
+            GroupLot(
+                group_index=g_idx,
+                lot_id=f"L_{g_idx}_0",
+                carton_count=len(groups[g_idx].cartons),
+                order_key=float(rank),
+            )
+            for rank, g_idx in enumerate(ranked)
+        ]
+    elif order_heuristic == "weight_first":
+        # Heavy items on floor
+        ranked = sorted(
+            range(n_g),
+            key=lambda i: (
+                groups[i].customer_sequence,
+                -groups[i].cartons[0].weight_kg,
+                -(groups[i].cartons[0].length_cm * groups[i].cartons[0].width_cm * groups[i].cartons[0].height_cm),
+            ),
+        )
+        lots = [
+            GroupLot(
+                group_index=g_idx,
+                lot_id=f"L_{g_idx}_0",
+                carton_count=len(groups[g_idx].cartons),
+                order_key=float(rank),
+            )
+            for rank, g_idx in enumerate(ranked)
+        ]
+    elif order_heuristic == "random":
+        keys = list(range(n_g))
+        random.shuffle(keys)
+        lots = [
+            GroupLot(
+                group_index=g_idx,
+                lot_id=f"L_{g_idx}_0",
+                carton_count=len(groups[g_idx].cartons),
+                order_key=float(keys[g_idx]) + random.uniform(-0.2, 0.2),
+            )
+            for g_idx in range(n_g)
+        ]
+    else:
+        # Default CSV sequence with minor jitter
+        lots = [
+            GroupLot(
+                group_index=g_idx,
+                lot_id=f"L_{g_idx}_0",
+                carton_count=len(groups[g_idx].cartons),
                 order_key=float(g_idx) + random.uniform(-0.1, 0.1),
             )
-        )
+            for g_idx in range(n_g)
+        ]
+
     return GroupIndividual(posture_genes=posture_genes, lots=lots)
 
 
@@ -153,6 +232,7 @@ def mutate_group_individual(
     """Mutate group individual:
     - Flip group posture
     - Nudge lot order keys
+    - Jump / swap lot order keys
     - Split a lot (e.g. 16 -> 10 + 6)
     - Merge lots of the same group
     """
@@ -169,6 +249,15 @@ def mutate_group_individual(
     for lot in mutated.lots:
         if random.random() < mutation_rate:
             lot.order_key += random.uniform(-1.5, 1.5)
+
+    # 2b. Order jump / swap mutation (prevents lots from getting permanently trapped)
+    if random.random() < 0.20 and len(mutated.lots) >= 2:
+        if random.random() < 0.5:
+            l1, l2 = random.sample(mutated.lots, 2)
+            l1.order_key, l2.order_key = l2.order_key, l1.order_key
+        else:
+            l = random.choice(mutated.lots)
+            l.order_key = random.uniform(0.0, float(len(groups)))
 
     # 3. Lot Split operator
     if random.random() < split_prob:
@@ -443,6 +532,21 @@ def decode_group_individual_dynamic(
     c_vol = container_dims.volume()
     cL, cW, cH = container_dims.length, container_dims.width, container_dims.height
     wall_penalty = getattr(settings, "WALL_FIRST_PENALTY", 2.0)
+    dead_space_wt = getattr(settings, "DEAD_SPACE_WEIGHT", 0.0)
+
+    # Smallest vertical / horizontal dimension each group can present in any permitted
+    # posture; used to tell whether leftover headroom or a lateral sliver is still usable.
+    grp_min_h: List[float] = []
+    grp_min_xy: List[float] = []
+    for g in groups:
+        c0 = g.cartons[0]
+        hs, xys = [], []
+        for p in (g.permitted_postures or [Posture.LWH]):
+            d = Dimensions(c0.length_cm, c0.width_cm, c0.height_cm).apply_posture(p)
+            hs.append(d.height)
+            xys.append(min(d.length, d.width))
+        grp_min_h.append(min(hs))
+        grp_min_xy.append(min(xys))
 
     placed_grids = []
     placed_grid_bboxes: List[BoundingBox] = []
@@ -458,7 +562,7 @@ def decode_group_individual_dynamic(
     # Track carton pointer per group
     group_carton_ptrs = [0] * len(groups)
 
-    for lot in ordered_lots:
+    for lot_idx, lot in enumerate(ordered_lots):
         group = groups[lot.group_index]
         ptr = group_carton_ptrs[lot.group_index]
         lot_cartons = group.cartons[ptr : ptr + lot.carton_count]
@@ -480,6 +584,11 @@ def decode_group_individual_dynamic(
             rem_count = len(rem_in_lot)
             rep_box = rem_in_lot[0]
             sorted_eps = sort_extreme_points(extreme_points)[:30]
+
+            # Groups that still have cartons to place (this lot's group + later lots)
+            rem_groups = {lot.group_index} | {l.group_index for l in ordered_lots[lot_idx + 1:]}
+            min_h_rem = min(grp_min_h[g_i] for g_i in rem_groups)
+            min_xy_rem = min(grp_min_xy[g_i] for g_i in rem_groups)
 
             best_placement = None
             best_score = -float('inf')
@@ -577,6 +686,15 @@ def decode_group_individual_dynamic(
                             + posture_pref_bonus
                             + residual_wt * res_score
                         )
+
+                        # Dead-space penalty: leftover headroom between the top of the grid
+                        # and the container roof that is smaller than every remaining carton's
+                        # minimum height. Steers tier counts toward heights that either reach
+                        # the roof or leave room another group can actually fill.
+                        if dead_space_wt > 0.0:
+                            roof_headroom = container_dims.height - cand_bbox.max_z
+                            if 1e-3 < roof_headroom < min_h_rem - 1e-3:
+                                score -= dead_space_wt * (roof_headroom / container_dims.height)
 
                         # Overrun calculation (Wall-First overrun penalty for FCL)
                         c_overrun = max(0.0, cand_bbox.max_x - front)
@@ -687,7 +805,14 @@ def group_genetic_algorithm(
 ) -> GroupIndividual:
     """Genetic Algorithm operating at the Group level (Variants D and E)."""
     settings = get_settings()
-    pop = [create_group_individual(groups) for _ in range(population_size)]
+    pop: List[GroupIndividual] = []
+    # Seed population with key heuristics: tall-first, volume-first, weight-first
+    for h in ["tall_first", "volume_first", "weight_first"]:
+        pop.append(create_group_individual(groups, order_heuristic=h))
+    # Fill remaining population with default CSV order and random order permutations
+    while len(pop) < population_size:
+        h = "random" if len(pop) % 2 == 0 else None
+        pop.append(create_group_individual(groups, order_heuristic=h))
 
     for ind in pop:
         evaluate_group_individual(ind, groups, container_dims, max_weight, is_lcl, use_dynamic_blocks)

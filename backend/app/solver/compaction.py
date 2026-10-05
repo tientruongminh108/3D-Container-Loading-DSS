@@ -139,6 +139,33 @@ def is_valid_shift(
     return True
 
 
+MAX_PARTIAL_STOPS = 6
+MAX_COMPACT_ITERS = 4   # x/y/z passes repeated until stable (upper bound)
+MAX_COMPACT_ROUNDS = 3  # compaction <-> insertion alternations (upper bound)
+
+
+def _slide_stops(
+    bboxes: List[BoundingBox],
+    lo: float,
+    hi: float,
+    min_attr: str,
+    max_attr: str,
+) -> List[float]:
+    """Candidate target coordinates for a slide toward the origin.
+
+    Returns [lo] (the full slide) followed by up to MAX_PARTIAL_STOPS coordinates
+    strictly between lo and hi that coincide with a face of some other carton,
+    ordered so that the largest slide is attempted first.
+    """
+    eps = 1e-6
+    vals = set()
+    for b in bboxes:
+        for v in (getattr(b, min_attr), getattr(b, max_attr)):
+            if lo + eps < v < hi - eps:
+                vals.add(round(v, 4))
+    return [lo] + sorted(vals)[:MAX_PARTIAL_STOPS]
+
+
 def compact_x_rear(
     placed_bboxes: List[BoundingBox],
     placed_data: List[Any],
@@ -182,18 +209,20 @@ def compact_x_rear(
                     limit_x = b_j.max_x
 
         if limit_x < b_i.min_x - 1e-6:
-            shift_x = b_i.min_x - limit_x
-            candidate = BoundingBox(
-                b_i.min_x - shift_x,
-                b_i.min_y,
-                b_i.min_z,
-                b_i.max_x - shift_x,
-                b_i.max_y,
-                b_i.max_z,
-                is_door_anchor=b_i.is_door_anchor,
-            )
-            if is_valid_shift(i, candidate, placed_bboxes, min_support_ratio, placed_data=placed_data, placed_postures=placed_postures, container_dims=container_dims):
-                placed_bboxes[i] = candidate
+            for new_x in _slide_stops(placed_bboxes, limit_x, b_i.min_x, "min_x", "max_x"):
+                shift_x = b_i.min_x - new_x
+                candidate = BoundingBox(
+                    b_i.min_x - shift_x,
+                    b_i.min_y,
+                    b_i.min_z,
+                    b_i.max_x - shift_x,
+                    b_i.max_y,
+                    b_i.max_z,
+                    is_door_anchor=b_i.is_door_anchor,
+                )
+                if is_valid_shift(i, candidate, placed_bboxes, min_support_ratio, placed_data=placed_data, placed_postures=placed_postures, container_dims=container_dims):
+                    placed_bboxes[i] = candidate
+                    break
 
     return placed_bboxes
 
@@ -241,18 +270,20 @@ def compact_y_sidewall(
                     limit_y = b_j.max_y
 
         if limit_y < b_i.min_y - 1e-6:
-            shift_y = b_i.min_y - limit_y
-            candidate = BoundingBox(
-                b_i.min_x,
-                b_i.min_y - shift_y,
-                b_i.min_z,
-                b_i.max_x,
-                b_i.max_y - shift_y,
-                b_i.max_z,
-                is_door_anchor=b_i.is_door_anchor,
-            )
-            if is_valid_shift(i, candidate, placed_bboxes, min_support_ratio, placed_data=placed_data, placed_postures=placed_postures, container_dims=container_dims):
-                placed_bboxes[i] = candidate
+            for new_y in _slide_stops(placed_bboxes, limit_y, b_i.min_y, "min_y", "max_y"):
+                shift_y = b_i.min_y - new_y
+                candidate = BoundingBox(
+                    b_i.min_x,
+                    b_i.min_y - shift_y,
+                    b_i.min_z,
+                    b_i.max_x,
+                    b_i.max_y - shift_y,
+                    b_i.max_z,
+                    is_door_anchor=b_i.is_door_anchor,
+                )
+                if is_valid_shift(i, candidate, placed_bboxes, min_support_ratio, placed_data=placed_data, placed_postures=placed_postures, container_dims=container_dims):
+                    placed_bboxes[i] = candidate
+                    break
 
     return placed_bboxes
 
@@ -550,26 +581,34 @@ def run_compaction_pass(
     placed_postures = list(placed_postures)
     unplaced = list(unplaced)
 
-    # 1. X compaction
-    placed_bboxes = compact_x_rear(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio, placed_postures=placed_postures)
+    for _round in range(MAX_COMPACT_ROUNDS + 1):
+        # 1-3. X (rear), Y (left wall) and Z (gravity) compaction, repeated until stable:
+        # a y/z move can open new x slack for neighbours, so a single pass is not enough.
+        for _ in range(MAX_COMPACT_ITERS):
+            before = [(b.min_x, b.min_y, b.min_z) for b in placed_bboxes]
+            placed_bboxes = compact_x_rear(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio, placed_postures=placed_postures)
+            placed_bboxes = compact_y_sidewall(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio, placed_postures=placed_postures)
+            placed_bboxes = compact_z_downward(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio, placed_postures=placed_postures)
+            if before == [(b.min_x, b.min_y, b.min_z) for b in placed_bboxes]:
+                break
 
-    # 2. Y compaction
-    placed_bboxes = compact_y_sidewall(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio, placed_postures=placed_postures)
+        if _round == MAX_COMPACT_ROUNDS or not unplaced:
+            break
 
-    # 3. Z compaction (downward / gravity settlement)
-    placed_bboxes = compact_z_downward(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio, placed_postures=placed_postures)
-
-    # 4. Insertion re-scan
-    placed_bboxes, placed_data, placed_postures, unplaced, current_weight = rescan_and_insert(
-        placed_bboxes=placed_bboxes,
-        placed_data=placed_data,
-        placed_postures=placed_postures,
-        unplaced=unplaced,
-        container_dims=container_dims,
-        current_weight=current_weight,
-        max_weight=max_weight,
-        is_lcl=is_lcl,
-    )
+        # 4. Insertion re-scan; if anything was inserted, compact again and retry.
+        n_before = len(placed_bboxes)
+        placed_bboxes, placed_data, placed_postures, unplaced, current_weight = rescan_and_insert(
+            placed_bboxes=placed_bboxes,
+            placed_data=placed_data,
+            placed_postures=placed_postures,
+            unplaced=unplaced,
+            container_dims=container_dims,
+            current_weight=current_weight,
+            max_weight=max_weight,
+            is_lcl=is_lcl,
+        )
+        if len(placed_bboxes) == n_before:
+            break
 
     # 4. Recompute fitness
     fitness_res = calculate_fitness(
