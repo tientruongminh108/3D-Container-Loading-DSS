@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional, Union
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import uuid
 import time
@@ -177,8 +177,8 @@ def generate_mock_run_result(
         placed_boxes=placed_boxes,
         unplaced_cartons=unplaced_cartons,
         layers=layers,
-        created_at=datetime.utcnow(),
-        completed_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc),
     )
 
 
@@ -220,7 +220,7 @@ class ItemService:
         db_item = self.get(item_id)
         for field, value in item.model_dump(exclude_unset=True).items():
             setattr(db_item, field, value)
-        db_item.updated_at = datetime.utcnow()
+        db_item.updated_at = datetime.now(timezone.utc)
         self.db.commit()
         self.db.refresh(db_item)
         return db_item
@@ -290,7 +290,7 @@ class ContainerService:
         db_container = self.get(container_id)
         for field, value in container.model_dump(exclude_unset=True).items():
             setattr(db_container, field, value)
-        db_container.updated_at = datetime.utcnow()
+        db_container.updated_at = datetime.now(timezone.utc)
         self.db.commit()
         self.db.refresh(db_container)
         return db_container
@@ -516,7 +516,7 @@ class RunService:
 
             db_run.status = RunStatus.COMPLETED.value
             db_run.result_json = run_result.model_dump_json()
-            db_run.completed_at = datetime.utcnow()
+            db_run.completed_at = datetime.now(timezone.utc)
             self.db.commit()
 
             if progress_callback:
@@ -719,7 +719,7 @@ class PackingListService:
                 setattr(db_packing_list, field, value)
             else:
                 setattr(db_packing_list, field, value)
-        db_packing_list.updated_at = datetime.utcnow()
+        db_packing_list.updated_at = datetime.now(timezone.utc)
         self.db.commit()
         self.db.refresh(db_packing_list)
         return self._to_pydantic(db_packing_list)

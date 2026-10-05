@@ -19,7 +19,7 @@ from app.core.models import (
     UnplacedReason,
     RunResult,
 )
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 
@@ -487,8 +487,8 @@ def build_run_result(
         internal_width_cm=container_spec.internal_width_cm,
         internal_height_cm=container_spec.internal_height_cm,
         max_weight_kg=container_spec.max_weight_kg,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
 
     return RunResult(
@@ -499,8 +499,8 @@ def build_run_result(
         placed_boxes=all_placed_boxes,
         unplaced_cartons=unplaced_cartons,
         layers=layer_data,
-        created_at=datetime.utcnow(),
-        completed_at=datetime.utcnow() if status == "completed" else None,
+        created_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc) if status == "completed" else None,
         error_message=error_message,
         options=options,
         planning_time_seconds=planning_time_seconds,

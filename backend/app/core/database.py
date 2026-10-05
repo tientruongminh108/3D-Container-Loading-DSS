@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text, CheckConstraint, event
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.pool import StaticPool
-from datetime import datetime
+from datetime import datetime, timezone
 from app.config import get_settings
 
 settings = get_settings()
@@ -38,8 +38,8 @@ class Item(Base):
     height_cm = Column(Float, nullable=False)
     weight_kg = Column(Float, nullable=False)
     this_way_up = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     __table_args__ = (
         CheckConstraint("length_cm > 0", name="item_length_positive"),
@@ -58,8 +58,8 @@ class Container(Base):
     internal_width_cm = Column(Float, nullable=False)
     internal_height_cm = Column(Float, nullable=False)
     max_weight_kg = Column(Float, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     __table_args__ = (
         CheckConstraint("internal_length_cm > 0", name="container_length_positive"),
@@ -80,7 +80,7 @@ class Run(Base):
     status = Column(String(20), default="pending", nullable=False)
     result_json = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     completed_at = Column(DateTime, nullable=True)
 
     container = relationship("Container")
@@ -99,8 +99,8 @@ class PackingList(Base):
     total_volume_cm3 = Column(Float, default=0)
     shipment_type = Column(String(10), default="FCL")
     customer_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 def init_db():

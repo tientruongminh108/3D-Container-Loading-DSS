@@ -41,3 +41,6 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 pythonpath = ["."]
+markers = [
+    "slow: marks tests as slow (run with -m slow or skip with -m 'not slow')",
+]

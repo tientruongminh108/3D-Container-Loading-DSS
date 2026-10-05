@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 import pandas as pd
 from io import StringIO
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.core.database import get_db
 from app.core.models import (
@@ -291,7 +291,7 @@ async def upload_items_csv(file: UploadFile = File(...), db: Session = Depends(g
                 # Update existing
                 for key, value in item_data.items():
                     setattr(existing, key, value)
-                existing.updated_at = datetime.utcnow()
+                existing.updated_at = datetime.now(timezone.utc)
                 updated += 1
             else:
                 # Create new
@@ -390,7 +390,7 @@ async def upload_containers_csv(file: UploadFile = File(...), db: Session = Depe
                 # Update existing
                 for key, value in container_data.items():
                     setattr(existing, key, value)
-                existing.updated_at = datetime.utcnow()
+                existing.updated_at = datetime.now(timezone.utc)
                 updated += 1
             else:
                 # Create new

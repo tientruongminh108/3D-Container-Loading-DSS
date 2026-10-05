@@ -53,6 +53,7 @@ def sample_data():
     return container_df, item_master_df, packing_list_df
 
 
+@pytest.mark.slow
 def test_pipeline_seed_reproducibility(sample_data):
     container_df, item_master_df, packing_list_df = sample_data
 

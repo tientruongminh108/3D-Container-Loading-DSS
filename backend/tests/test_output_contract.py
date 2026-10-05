@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 from app.core.models import (
     RunResult, LoadMetrics, PlacedBox, UnplacedCarton,
@@ -16,8 +16,8 @@ def create_fixture_plan_fcl() -> RunResult:
         internal_width_cm=235.2,
         internal_height_cm=270.0,
         max_weight_kg=28000,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
 
     placed_boxes = [
@@ -86,8 +86,8 @@ def create_fixture_plan_fcl() -> RunResult:
         placed_boxes=placed_boxes,
         unplaced_cartons=[],
         layers=[],
-        created_at=datetime.utcnow(),
-        completed_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc),
     )
 
 
@@ -100,8 +100,8 @@ def create_fixture_plan_lcl() -> RunResult:
         internal_width_cm=235.2,
         internal_height_cm=270.0,
         max_weight_kg=28000,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
 
     placed_boxes = [
@@ -197,8 +197,8 @@ def create_fixture_plan_lcl() -> RunResult:
         placed_boxes=placed_boxes,
         unplaced_cartons=unplaced_cartons,
         layers=[],
-        created_at=datetime.utcnow(),
-        completed_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc),
     )
 
 
@@ -524,6 +524,7 @@ class TestOutputCoordinateIntegrity:
             assert p.z >= bbox_hwl.min_z - 1e-5
             assert p.z + p.actual_height <= bbox_hwl.max_z + 1e-5
 
+    @pytest.mark.slow
     def test_pipeline_e2e_all_boxes_strictly_inside_container(self):
         """Run complete solver pipeline and assert 100% of placed cartons are within container bounds"""
         import pandas as pd
@@ -597,6 +598,7 @@ class TestOutputCoordinateIntegrity:
                 f"Box {box.box_id} exceeds H: {box.z} + {box.actual_height} = {box.z + box.actual_height} > {H}"
             )
 
+    @pytest.mark.slow
     def test_step_index_ordering_rear_to_front(self):
         """Verify that step_index ordering sorts by (customer_sequence, -x, z, y).
         Within each customer sequence, x should be non-increasing (rear-to-front),
