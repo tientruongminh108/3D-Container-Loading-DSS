@@ -280,11 +280,15 @@ Key parameters defined in `backend/app/config.py`:
 |---|---|---|---|
 | `POPULATION_SIZE` | `60` | `30` | Number of individuals in GA population |
 | `GENERATIONS` | `100` | `40` | Maximum generations before termination |
-| `TOLERANCE_GAP_CM` | `2.0` | `2.0` | Horizontal spacing clearance between boxes and walls |
+| `TOLERANCE_GAP_CM` | `2.0` | `2.0` | Horizontal spacing clearance between boxes and walls (applied on X, Y axes) |
+| `EP_CANDIDATE_LIMIT` | `100` | — | Max extreme points evaluated per lot step in group decoder |
+| `GA_WORKERS` | `0` | — | Worker processes for GA evaluation (0=auto: 2 standalone, 1 nested) |
 | `SUPPORT_RATIO` | `0.6` | — | Minimum base area support fraction required to stack |
-| `MAX_BLOCK_FRACTION` | `0.2` | — | Max block dimension fraction of container during search |
-| `MAX_BLOCK_FRACTION_REPORT`| `0.4` | — | Max block dimension fraction for reporting |
-| `MIN_BLOCK_FILL_RATIO` | `0.98` | — | Minimum solid volume fraction for general blocks |
+| `MAX_BLOCK_FRACTION_X` | `0.30` | — | Max block dimension fraction of container along X (length) |
+| `MAX_BLOCK_FRACTION_Y` | `0.80` | — | Max block dimension fraction of container along Y (width) |
+| `MAX_BLOCK_FRACTION_Z` | `0.80` | — | Max block dimension fraction of container along Z (height) |
+| `MAX_BLOCK_FRACTION_REPORT`| `0.95` | — | Max block dimension fraction for reporting |
+| `MIN_BLOCK_FILL_RATIO` | `0.75` | — | Minimum solid volume fraction for general blocks |
 | `SIMILAR_SIZE_TOLERANCE` | `0.1` | — | Relative size tolerance for similar-sized carton blocks |
 | `ELITE_FRACTION` | `0.10` | — | Top fraction of population preserved across generations |
 | `MUTATION_RATE_BASE` | `0.25` | — | Base mutation probability for posture genes |
@@ -293,15 +297,18 @@ Key parameters defined in `backend/app/config.py`:
 | `CROSSOVER_PROBABILITY` | `0.7` | — | Multi-point crossover probability |
 | `MIN_IMPROVEMENT` | `0.01` | — | Minimum fitness gain considered significant progress |
 | `EARLY_STOP_PATIENCE` | `40` | — | Consecutive stagnant generations before early termination |
-| `SA_INTERVAL_GENERATIONS`| `5` | — | Frequency of Simulated Annealing local search |
-| `SA_INITIAL_TEMP` | `100.0` | — | Starting temperature for Simulated Annealing |
-| `SA_MIN_TEMP` | `1.0` | — | Minimum stopping temperature for Simulated Annealing |
-| `SA_COOLING_RATE` | `0.9` | — | Geometric cooling factor per SA iteration |
+| `MIN_USABLE_SHELF_CM` | `0.0` | — | Minimum dimension (cm) for leftover shelf space to be deemed usable |
+| `SHELF_OCCUPANCY_RATIO` | `1.0` | — | Ratio of shelf width required to gain shelf-occupancy bonus |
+| `DEAD_SPACE_WEIGHT` | `1.5` | — | Penalty weight for unusable roof headroom left by dynamic grids |
+| `WALL_FIRST_PENALTY` | `2.0` | — | Overrun penalty for FCL dynamic blocks branch |
+| `ALLOW_MOCK_FALLBACK` | `False` | — | Disables silent fallback to mock boxes; requires item master records |
 | `COG_TOLERANCE_XY` | `0.05` | — | Acceptable CoG deviation band ($\pm 5\%$ of length/width) |
 | `COG_TOLERANCE_Z` | `0.10` | — | Acceptable vertical CoG band ($+10\%$ of height) |
-| `UNPLACED_RANK_WEIGHT` | `2.0` | — | Penalty weight per unplaced carton (guarantees completeness > fill rate) |
 | `FITNESS_VOLUME_WEIGHT`| `1.0` | — | Weight of placed volume fraction in fitness function |
 | `FITNESS_COG_PENALTY_WEIGHT`| `0.3` | — | Penalty weight on normalized CoG deviation |
+| `FITNESS_FRAG_PENALTY_WEIGHT`| `0.5` | — | Penalty weight on frontier fragmentation |
+| `UNPLACED_VOLUME_WEIGHT` | `0.25` | — | Normalised penalty weight for unplaced carton volume fraction |
+| `UNPLACED_COUNT_WEIGHT` | `0.30` | — | Normalised penalty weight for unplaced carton count fraction |
 
 > **Note on Defaults**: When launched from the frontend wizard, `RunOptions` sends `population_size=30` and `generations=40` for responsive interactive response (~30–45s). When invoked directly via the backend API without options, the solver utilizes the config defaults of 60 individuals and 100 generations.
 
