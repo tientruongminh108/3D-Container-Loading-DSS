@@ -82,7 +82,7 @@ A Decision Support System for 3D container loading optimization using Genetic Al
 │   │   ├── hooks/
 │   │   │   ├── useRunWizard.ts         # Zustand store for run configuration & step state
 │   │   │   ├── useApi.ts               # Re-exports of API service clients and types
-│   │   │   └── useWebSocket.ts         # WebSocket client for real-time GA progress events
+│   │   │   └── useWebSocket.ts         # Client hook for progress events (with HTTP polling fallback)
 │   │   ├── services/
 │   │   │   └── api.ts                  # Axios API clients for backend endpoints
 │   │   ├── styles/
@@ -254,7 +254,7 @@ All endpoints are prefixed with `/api` (configured in `Settings.API_V1_PREFIX`):
   - **Step 2: Container**: Select from container specifications (e.g. 40HC, 20GP) or create a custom container.
   - **Step 3: Run Options**: Collapsible configuration defaulting to `population_size=30`, `generations=40`, `tolerance_gap_cm=2.0`.
 - **In-Progress Execution**:
-  - Transition in-place to real-time status tracker (indeterminate parsing/blocks phase, followed by GA generation progress bar via WebSocket/polling).
+  - Transition in-place to real-time status tracker (indeterminate parsing/blocks phase, followed by GA generation progress bar via HTTP polling; WebSocket upgrade path available).
 - **Loading Plan Viewer**:
   - Three.js 3D container rendering with orbit, pan, and zoom controls.
   - **Sequential Loading Controls**: Step through the loading plan carton by carton with Play/Pause, Step Prev/Next, Reset, Show All, and a seek slider. Boxes render in strict rear-to-door, floor-to-ceiling loading order.

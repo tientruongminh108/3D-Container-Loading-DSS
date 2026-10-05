@@ -445,26 +445,21 @@ class RunService:
             item_records = []
             for item_id in set(item_ids):
                 it = item_lookup.get(item_id)
-                if it:
-                    item_records.append({
-                        "Item_ID": it.item_id,
-                        "Description": it.description or "",
-                        "Length_cm": float(it.length_cm),
-                        "Width_cm": float(it.width_cm),
-                        "Height_cm": float(it.height_cm),
-                        "Weight_kg": float(it.weight_kg),
-                        "This_Way_Up": bool(it.this_way_up),
-                    })
-                else:
-                    item_records.append({
-                        "Item_ID": item_id,
-                        "Description": item_id,
-                        "Length_cm": 40.0,
-                        "Width_cm": 30.0,
-                        "Height_cm": 25.0,
-                        "Weight_kg": 10.0,
-                        "This_Way_Up": True,
-                    })
+                if not it:
+                    from app.core.exceptions import ValidationError
+                    raise ValidationError(
+                        f"Item '{item_id}' in packing list not found in Item Master. "
+                        "Please register this item in Data Management > Items first."
+                    )
+                item_records.append({
+                    "Item_ID": it.item_id,
+                    "Description": it.description or "",
+                    "Length_cm": float(it.length_cm),
+                    "Width_cm": float(it.width_cm),
+                    "Height_cm": float(it.height_cm),
+                    "Weight_kg": float(it.weight_kg),
+                    "This_Way_Up": bool(it.this_way_up),
+                })
             item_master_df = pd.DataFrame(item_records)
 
             container_df = pd.DataFrame([
@@ -498,16 +493,23 @@ class RunService:
                 if not run_result.planning_time_seconds:
                     run_result.planning_time_seconds = round(time.perf_counter() - workflow_start, 2)
             except Exception as solver_err:
-                print(f"Warning: mathematical solver failed ({solver_err}), falling back to deterministic packer")
-                run_result = run_deterministic_mock_pack(
-                    container=container,
-                    packing_rows=run_create.packing_list.rows,
-                    item_lookup=item_lookup,
-                    options=run_create.options,
-                    run_id=run_id,
-                )
-                run_result.options = run_create.options
-                run_result.planning_time_seconds = round(time.perf_counter() - workflow_start, 2)
+                settings = get_settings()
+                if getattr(settings, "ALLOW_MOCK_FALLBACK", False):
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        f"Mathematical solver failed ({solver_err}), falling back to deterministic packer"
+                    )
+                    run_result = run_deterministic_mock_pack(
+                        container=container,
+                        packing_rows=run_create.packing_list.rows,
+                        item_lookup=item_lookup,
+                        options=run_create.options,
+                        run_id=run_id,
+                    )
+                    run_result.options = run_create.options
+                    run_result.planning_time_seconds = round(time.perf_counter() - workflow_start, 2)
+                else:
+                    raise solver_err
 
             if run_result.metrics and not run_result.metrics.planning_time_seconds:
                 run_result.metrics.planning_time_seconds = run_result.planning_time_seconds

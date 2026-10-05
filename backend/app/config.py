@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "sqlite:///./data/app.db"
+    ALLOW_MOCK_FALLBACK: bool = False
 
     # Solver Parameters (Section 7)
     # Genetic Algorithm
