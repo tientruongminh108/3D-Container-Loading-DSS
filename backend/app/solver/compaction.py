@@ -28,6 +28,23 @@ def _check_support_for_unit(
     if bbox.min_z <= FLOOR_EPSILON:
         return True
 
+    # Weight hierarchy: a carton must never rest on (any part of) a lighter carton.
+    # compact_x_rear / compact_y_sidewall only re-checked the support RATIO, so a heavy
+    # carton could slide partly onto a lighter one (validator: weight_hierarchy).
+    if placed_data is not None and idx < len(placed_data):
+        unit_wt = getattr(placed_data[idx], 'boxes', [placed_data[idx]])[0].weight_kg
+        for k, b_k in enumerate(current_bboxes):
+            if k == idx or k >= len(placed_data):
+                continue
+            if abs(b_k.max_z - bbox.min_z) > FLOOR_EPSILON:
+                continue
+            ov_x = min(bbox.max_x, b_k.max_x) - max(bbox.min_x, b_k.min_x)
+            ov_y = min(bbox.max_y, b_k.max_y) - max(bbox.min_y, b_k.min_y)
+            if ov_x > 1e-4 and ov_y > 1e-4:
+                sup_wt = getattr(placed_data[k], 'boxes', [placed_data[k]])[0].weight_kg
+                if unit_wt > sup_wt + 1e-3:
+                    return False
+
     # Coarse check using bounding box
     if not check_support_ratio(bbox, current_bboxes, min_support_ratio):
         return False
@@ -131,6 +148,15 @@ def is_valid_shift(
     for j, b_j in enumerate(current_bboxes):
         if j != i and b_j.min_z > FLOOR_EPSILON:
             if abs(b_j.min_z - old_bbox.max_z) < 1e-4 and old_bbox.contact_area(b_j) > 1e-4:
+                if not _check_support_for_unit(j, b_j, current_bboxes, min_support_ratio, placed_data, placed_postures):
+                    current_bboxes[i] = old_bbox
+                    return False
+
+    # 3. Boxes that would newly rest on the moved box at its destination must satisfy
+    #    the weight hierarchy against it (support only improves, the weight rule may not).
+    for j, b_j in enumerate(current_bboxes):
+        if j != i and b_j.min_z > FLOOR_EPSILON:
+            if abs(b_j.min_z - new_bbox.max_z) < 1e-4 and new_bbox.contact_area(b_j) > 1e-4:
                 if not _check_support_for_unit(j, b_j, current_bboxes, min_support_ratio, placed_data, placed_postures):
                     current_bboxes[i] = old_bbox
                     return False

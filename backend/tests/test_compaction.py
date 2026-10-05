@@ -218,4 +218,53 @@ class TestCompactionPass:
         assert res_z[0].min_z == pytest.approx(0.0)
 
 
+class TestCompactionWeightHierarchy:
+    """A2: x/y slides must never leave a carton resting on a lighter carton."""
 
+    C_DIMS = Dimensions(length=100.0, width=20.0, height=50.0)
+
+    def _heavy_slides_onto_light(self, light_weight):
+        # L (rear, floor) | S (floor)  with H resting on S.  Sliding H to the rear wall would put
+        # half of H on L: support ratio stays 100% but H(20 kg) would rest on L.
+        l = make_box("L", 20.0, 20.0, 20.0, weight=light_weight)
+        s = make_box("S", 40.0, 20.0, 20.0, weight=30.0)
+        h = make_box("H", 40.0, 20.0, 20.0, weight=20.0)
+        bboxes = [
+            BoundingBox(0.0, 0.0, 0.0, 20.0, 20.0, 20.0),
+            BoundingBox(20.0, 0.0, 0.0, 60.0, 20.0, 20.0),
+            BoundingBox(20.0, 0.0, 20.0, 60.0, 20.0, 40.0),
+        ]
+        return compact_x_rear(bboxes, [l, s, h], self.C_DIMS, min_support_ratio=0.60)
+
+    def test_heavy_carton_does_not_slide_partly_onto_lighter_one(self):
+        out = self._heavy_slides_onto_light(light_weight=5.0)
+        assert out[2].min_x == pytest.approx(20.0)  # slide refused
+
+    def test_control_slide_allowed_when_supporter_is_heavy_enough(self):
+        out = self._heavy_slides_onto_light(light_weight=30.0)
+        assert out[2].min_x == pytest.approx(0.0)  # same geometry, legal weights -> slides
+
+    def _light_slides_under_heavy(self, mover_weight):
+        # A(floor) carries K and J (J blocked by K).  Floor carton I slides toward the rear and
+        # would end up under the free end of J -> J (20 kg) would partly rest on I.
+        a = make_box("A", 40.0, 20.0, 20.0, weight=30.0)
+        k = make_box("K", 10.0, 20.0, 20.0, weight=5.0)
+        j = make_box("J", 40.0, 20.0, 20.0, weight=20.0)
+        i = make_box("I", 20.0, 20.0, 20.0, weight=mover_weight)
+        bboxes = [
+            BoundingBox(0.0, 0.0, 0.0, 40.0, 20.0, 20.0),    # A
+            BoundingBox(0.0, 0.0, 20.0, 10.0, 20.0, 40.0),   # K
+            BoundingBox(10.0, 0.0, 20.0, 50.0, 20.0, 40.0),  # J (x 40..50 overhangs free floor)
+            BoundingBox(60.0, 0.0, 0.0, 80.0, 20.0, 20.0),   # I
+        ]
+        return compact_x_rear(bboxes, [a, k, j, i], self.C_DIMS, min_support_ratio=0.60)
+
+    def test_light_carton_does_not_slide_under_heavier_carton(self):
+        out = self._light_slides_under_heavy(mover_weight=5.0)
+        i, j = out[3], out[2]
+        assert i.min_x >= j.max_x - 1e-6  # stopped beside J's free end, never under it
+        assert i.min_x == pytest.approx(50.0)
+
+    def test_control_heavy_enough_carton_may_slide_under(self):
+        out = self._light_slides_under_heavy(mover_weight=25.0)
+        assert out[3].min_x == pytest.approx(40.0)
