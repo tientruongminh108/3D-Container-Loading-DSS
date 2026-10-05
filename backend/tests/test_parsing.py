@@ -16,9 +16,9 @@ def test_parse_container_spec():
     spec = parse_container_spec(df)
     assert spec.container_type == "40HC"
     assert spec.internal_length_cm == 1203.2
-    assert spec.usable_length == 1203.2  # default 0 tolerance gap
-    spec_with_gap = parse_container_spec(df, tolerance_gap=2.0)
-    assert spec_with_gap.usable_length == 1203.2 - 4.0  # 2 * 2.0 gap
+    assert spec.usable_length == 1203.2 - 4.0  # default 2.0 tolerance gap
+    spec_zero_gap = parse_container_spec(df, tolerance_gap=0.0)
+    assert spec_zero_gap.usable_length == 1203.2
 
 
 def test_parse_item_master():

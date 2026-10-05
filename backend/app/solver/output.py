@@ -247,6 +247,7 @@ def calculate_metrics(
     container_dims: Dimensions,
     max_weight: float,
     planning_time_seconds: Optional[float] = None,
+    nominal_container_dims: Optional[Dimensions] = None,
 ) -> LoadMetrics:
     placed_count = len(placed_boxes)
     unplaced_count = len(unplaced)
@@ -255,7 +256,8 @@ def calculate_metrics(
     placed_volume = sum(
         b.actual_length * b.actual_width * b.actual_height for b in placed_boxes
     )
-    container_volume = container_dims.length * container_dims.width * container_dims.height
+    denom_dims = nominal_container_dims if nominal_container_dims is not None else container_dims
+    container_volume = denom_dims.length * denom_dims.width * denom_dims.height
     fill_rate = placed_volume / container_volume if container_volume > 0 else 0
 
     total_cbm = round(container_volume / 1_000_000.0, 3)
@@ -279,7 +281,7 @@ def calculate_metrics(
     )
 
     _, cog_dev_xy, cog_dev_z = check_cog_balance(
-        cog, container_dims, settings.COG_TOLERANCE_XY, settings.COG_TOLERANCE_Z
+        cog, denom_dims, settings.COG_TOLERANCE_XY, settings.COG_TOLERANCE_Z
     )
 
     return LoadMetrics(
@@ -392,6 +394,22 @@ def build_run_result(
 
     all_placed_boxes = shift_downward_cartons(all_placed_boxes, is_lcl=is_lcl)
 
+    # Shift placed boxes by +gap in X and Y into physical container coordinates
+    gap = 0.0
+    if options and getattr(options, "tolerance_gap_cm", None) is not None:
+        gap = float(options.tolerance_gap_cm)
+    elif container_spec is not None and hasattr(container_spec, "internal_length_cm") and hasattr(container_spec, "usable_length"):
+        gap = max(0.0, (float(container_spec.internal_length_cm) - float(container_spec.usable_length)) / 2.0)
+    else:
+        from app.config import get_settings
+        settings = get_settings()
+        gap = getattr(settings, "TOLERANCE_GAP_CM", 0.0)
+
+    if gap > 0:
+        for b in all_placed_boxes:
+            b.x += gap
+            b.y += gap
+
     COLOR_PALETTE = [
         "#3b82f6",  # Blue
         "#10b981",  # Emerald
@@ -414,6 +432,14 @@ def build_run_result(
         color_idx = (b.customer_sequence - 1) % len(COLOR_PALETTE)
         b.color = COLOR_PALETTE[color_idx]
 
+    nominal_dims = None
+    if container_spec is not None and hasattr(container_spec, "internal_length_cm"):
+        nominal_dims = Dimensions(
+            float(container_spec.internal_length_cm),
+            float(container_spec.internal_width_cm),
+            float(container_spec.internal_height_cm),
+        )
+
     layers = build_layers(all_placed_boxes)
     unplaced_cartons = build_unplaced_cartons(unplaced_boxes, unplaced_blocks, is_lcl)
     metrics = calculate_metrics(
@@ -422,6 +448,7 @@ def build_run_result(
         container_dims,
         container_spec.max_weight_kg,
         planning_time_seconds=planning_time_seconds,
+        nominal_container_dims=nominal_dims,
     )
 
     layer_data = []
