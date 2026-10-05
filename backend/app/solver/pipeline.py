@@ -1,4 +1,4 @@
-from typing import List, Callable, Optional, Tuple
+from typing import List, Callable, Optional, Tuple, Any
 from dataclasses import dataclass
 from app.config import get_settings
 from app.solver.parsing import parse_and_join, Box, ContainerSpec, PackingListPreview, ShipmentType
@@ -22,6 +22,171 @@ class PipelineResult:
     unplaced_boxes: List[Box]
     container_spec: ContainerSpec
     is_lcl: bool
+
+
+@dataclass
+class ResolvedStrategy:
+    use_static_blocks: bool
+    dynamic_blocks: bool
+    ga_level: str
+    group_key: str
+    post_explode_compaction: bool
+
+
+def _resolve_strategy(options, settings) -> ResolvedStrategy:
+    """Resolve solver strategy options, ensuring user-specified options take precedence
+    over default heuristics (preventing the options-override trap).
+    """
+    # Baseline defaults (E_PEC configuration)
+    use_static_blocks = False
+    dynamic_blocks = True
+    ga_level = "group"
+    group_key = "geometry"
+    post_explode_compaction = True
+
+    if options is not None:
+        if options.use_static_blocks is True:
+            use_static_blocks = True
+            dynamic_blocks = False
+            ga_level = "unit"
+        elif options.ga_level == "carton":
+            use_static_blocks = False
+            dynamic_blocks = False
+            ga_level = "carton"
+
+        if options.use_static_blocks is not None:
+            use_static_blocks = options.use_static_blocks
+        if options.dynamic_blocks is not None:
+            dynamic_blocks = options.dynamic_blocks
+        if options.ga_level is not None:
+            ga_level = options.ga_level
+        if options.group_key is not None:
+            group_key = options.group_key
+        if options.post_explode_compaction is not None:
+            post_explode_compaction = options.post_explode_compaction
+
+    return ResolvedStrategy(
+        use_static_blocks=use_static_blocks,
+        dynamic_blocks=dynamic_blocks,
+        ga_level=ga_level,
+        group_key=group_key,
+        post_explode_compaction=post_explode_compaction,
+    )
+
+
+def _explode_to_units(
+    placed_data: List[Any],
+    placed_bboxes: List[BoundingBox],
+    placed_postures: List[Any],
+    unplaced: List[Tuple[Any, str]],
+) -> Tuple[List[BoundingBox], List[Box], List[Any], List[Tuple[Box, str]]]:
+    """Explode placed and unplaced blocks into individual box units with bounding boxes."""
+    from app.solver.output import explode_blocks
+    exploded_cartons = explode_blocks(placed_data, placed_bboxes, placed_postures)
+    c_bboxes = []
+    c_data = []
+    c_postures = []
+    for c in exploded_cartons:
+        _, c_inf = get_unit_inflated_dims(c, c.posture)
+        c_bboxes.append(
+            BoundingBox(
+                c.x, c.y, c.z,
+                c.x + c_inf.length,
+                c.y + c_inf.width,
+                c.z + c_inf.height,
+            )
+        )
+        c_box = Box(
+            box_id=c.box_id,
+            item_id=c.item_id,
+            po_no=c.po_no,
+            customer_code=c.customer_code,
+            customer_sequence=c.customer_sequence,
+            length_cm=c.length_cm,
+            width_cm=c.width_cm,
+            height_cm=c.height_cm,
+            weight_kg=c.weight_kg,
+            this_way_up=c.this_way_up,
+            permitted_postures=c.permitted_postures,
+            inflated_length=c.inflated_length,
+            inflated_width=c.inflated_width,
+            inflated_height=c.inflated_height,
+        )
+        c_data.append(c_box)
+        c_postures.append(c.posture)
+
+    exploded_unplaced = []
+    for u, r in unplaced:
+        if isinstance(u, Block):
+            for c in u.contents:
+                exploded_unplaced.append((c, r))
+        else:
+            exploded_unplaced.append((u, r))
+
+    return c_bboxes, c_data, c_postures, exploded_unplaced
+
+
+def _finalize(
+    best_individual: Individual,
+    placed_bboxes: List[BoundingBox],
+    placed_data: List[Any],
+    placed_postures: List[Any],
+    unplaced: List[Tuple[Any, str]],
+    container_dims: Dimensions,
+    container_spec: ContainerSpec,
+    boxes: List[Box],
+    is_lcl: bool,
+    options: Optional[Any],
+    start_time: float,
+    seed: Optional[int] = None,
+    progress_callback: Optional[Callable[[str, float, dict], None]] = None,
+) -> PipelineResult:
+    """Finalize run result, separating blocks and boxes, calculating timings and building PipelineResult."""
+    placed_blocks = []
+    placed_individual_boxes = []
+    for unit in placed_data:
+        if isinstance(unit, Block):
+            placed_blocks.append(unit)
+        else:
+            placed_individual_boxes.append(unit)
+
+    final_unplaced_blocks = [u for u, _ in unplaced if isinstance(u, Block)]
+    final_unplaced_boxes = [u for u, _ in unplaced if not isinstance(u, Block)]
+
+    planning_time_sec = round(time.perf_counter() - start_time, 2)
+
+    result = build_run_result(
+        individual=best_individual,
+        container_dims=container_dims,
+        container_spec=container_spec,
+        placed_blocks=placed_blocks,
+        unplaced_blocks=final_unplaced_blocks,
+        all_boxes=boxes,
+        unplaced_boxes=final_unplaced_boxes,
+        is_lcl=is_lcl,
+        placed_bboxes=placed_bboxes,
+        placed_data=placed_data,
+        placed_individual_boxes=placed_individual_boxes,
+        placed_postures=placed_postures,
+        status=RunStatus.COMPLETED.value,
+        options=options,
+        planning_time_seconds=planning_time_sec,
+        seed=seed,
+    )
+
+    if progress_callback:
+        progress_callback("complete", 1.0, {"message": "Done", "run_id": result.run_id})
+
+    return PipelineResult(
+        result=result,
+        best_individual=best_individual,
+        placed_blocks=placed_blocks,
+        unplaced_blocks=final_unplaced_blocks,
+        all_boxes=boxes,
+        unplaced_boxes=final_unplaced_boxes,
+        container_spec=container_spec,
+        is_lcl=is_lcl,
+    )
 
 
 def run_pipeline(
@@ -56,31 +221,12 @@ def run_pipeline(
     if progress_callback:
         progress_callback("sort", 0.1, {"message": "Sorting boxes...", "total_boxes": len(boxes)})
 
-    use_static_blocks = (
-        options.use_static_blocks
-        if options and options.use_static_blocks is not None
-        else settings.USE_STATIC_BLOCKS
-    )
-    group_key = (
-        options.group_key
-        if options and options.group_key is not None
-        else settings.GROUP_KEY
-    )
-    ga_level = (
-        options.ga_level
-        if options and options.ga_level is not None
-        else settings.GA_LEVEL
-    )
-    dynamic_blocks = (
-        options.dynamic_blocks
-        if options and options.dynamic_blocks is not None
-        else settings.DYNAMIC_BLOCKS
-    )
-    post_explode_compaction = (
-        options.post_explode_compaction
-        if options and options.post_explode_compaction is not None
-        else settings.POST_EXPLODE_COMPACTION
-    )
+    strategy = _resolve_strategy(options, settings)
+    use_static_blocks = strategy.use_static_blocks
+    dynamic_blocks = strategy.dynamic_blocks
+    ga_level = strategy.ga_level
+    group_key = strategy.group_key
+    post_explode_compaction = strategy.post_explode_compaction
 
     container_dims = Dimensions(
         container_spec.usable_length,
@@ -88,15 +234,6 @@ def run_pipeline(
         container_spec.usable_height,
     )
     is_lcl = shipment_type == ShipmentType.LCL
-
-    # If strategy options are not explicitly specified, auto-select the best validated strategy:
-    # Always use the E_PEC configuration unconditionally for every input regardless of customer count.
-    if options is None or (options.use_static_blocks is None and options.dynamic_blocks is None):
-        use_static_blocks = False
-        dynamic_blocks = True
-        ga_level = "group"
-        group_key = "geometry"
-        post_explode_compaction = True
 
     if use_static_blocks:
         # Variants A and B: Static Blocks
@@ -158,48 +295,9 @@ def run_pipeline(
 
         if post_explode_compaction:
             # Variant B: explode blocks into cartons FIRST, then run 4 compaction passes and insertion
-            from app.solver.output import explode_blocks
-            exploded_cartons = explode_blocks(placed_data, placed_bboxes, placed_postures)
-            c_bboxes = []
-            c_data = []
-            c_postures = []
-            for c in exploded_cartons:
-                _, c_inf = get_unit_inflated_dims(c, c.posture)
-                c_bboxes.append(
-                    BoundingBox(
-                        c.x, c.y, c.z,
-                        c.x + c_inf.length,
-                        c.y + c_inf.width,
-                        c.z + c_inf.height,
-                    )
-                )
-                c_box = Box(
-                    box_id=c.box_id,
-                    item_id=c.item_id,
-                    po_no=c.po_no,
-                    customer_code=c.customer_code,
-                    customer_sequence=c.customer_sequence,
-                    length_cm=c.length_cm,
-                    width_cm=c.width_cm,
-                    height_cm=c.height_cm,
-                    weight_kg=c.weight_kg,
-                    this_way_up=c.this_way_up,
-                    permitted_postures=c.permitted_postures,
-                    inflated_length=c.inflated_length,
-                    inflated_width=c.inflated_width,
-                    inflated_height=c.inflated_height,
-                )
-                c_data.append(c_box)
-                c_postures.append(c.posture)
-
-            exploded_unplaced = []
-            for u, r in unplaced:
-                if isinstance(u, Block):
-                    for c in u.contents:
-                        exploded_unplaced.append((c, r))
-                else:
-                    exploded_unplaced.append((u, r))
-
+            c_bboxes, c_data, c_postures, exploded_unplaced = _explode_to_units(
+                placed_data, placed_bboxes, placed_postures, unplaced
+            )
             placed_bboxes, placed_data, placed_postures, unplaced, current_weight, fitness_res = run_compaction_pass(
                 placed_bboxes=c_bboxes,
                 placed_data=c_data,
@@ -346,50 +444,18 @@ def run_pipeline(
             placed_postures=placed_postures,
         )
 
-    # Separate placed blocks from placed individual boxes
-    placed_blocks = []
-    placed_individual_boxes = []
-    for unit in placed_data:
-        if isinstance(unit, Block):
-            placed_blocks.append(unit)
-        else:
-            placed_individual_boxes.append(unit)
-
-    # Unplaced blocks and boxes from final solution
-    final_unplaced_blocks = [u for u, _ in unplaced if isinstance(u, Block)]
-    final_unplaced_boxes = [u for u, _ in unplaced if not isinstance(u, Block)]
-
-    planning_time_sec = round(time.perf_counter() - start_time, 2)
-
-    result = build_run_result(
-        individual=best_individual,
-        container_dims=container_dims,
-        container_spec=container_spec,
-        placed_blocks=placed_blocks,
-        unplaced_blocks=final_unplaced_blocks,
-        all_boxes=boxes,
-        unplaced_boxes=final_unplaced_boxes,
-        is_lcl=is_lcl,
+    return _finalize(
+        best_individual=best_individual,
         placed_bboxes=placed_bboxes,
         placed_data=placed_data,
-        placed_individual_boxes=placed_individual_boxes,
         placed_postures=placed_postures,
-        status=RunStatus.COMPLETED.value,
-        options=options,
-        planning_time_seconds=planning_time_sec,
-        seed=seed,
-    )
-
-    if progress_callback:
-        progress_callback("complete", 1.0, {"message": "Done", "run_id": result.run_id})
-
-    return PipelineResult(
-        result=result,
-        best_individual=best_individual,
-        placed_blocks=placed_blocks,
-        unplaced_blocks=final_unplaced_blocks,
-        all_boxes=boxes,
-        unplaced_boxes=final_unplaced_boxes,
+        unplaced=unplaced,
+        container_dims=container_dims,
         container_spec=container_spec,
+        boxes=boxes,
         is_lcl=is_lcl,
+        options=options,
+        start_time=start_time,
+        seed=seed,
+        progress_callback=progress_callback,
     )
