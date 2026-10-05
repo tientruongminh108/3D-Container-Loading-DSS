@@ -133,6 +133,21 @@ def parse_item_master(df: pd.DataFrame) -> Dict[str, ItemBase]:
 
 
 def detect_shipment_type(packing_rows: List[PackingListRow]) -> Tuple[ShipmentType, int, Dict[str, int]]:
+    """Detect shipment type (FCL vs LCL) and establish customer sequence mapping.
+
+    Customer Sequence Convention:
+    - Customer codes are assigned sequence numbers 1..N based on their order of
+      appearance in the packing list.
+    - Sequence 1 is the first drop-off / destination stop (unloaded first).
+    - Sequence N is the last drop-off / destination stop (unloaded last).
+    - Under LIFO delivery loading, earlier stops (lower sequence) should be placed
+      closer to the container door (+X), while later stops (higher sequence) are
+      placed deeper towards the rear wall (X=0).
+
+    # TODO(owner decision): enforce LIFO in decoder
+    Currently LIFO delivery ordering is tracked as a soft diagnostic metric rather
+    than a strict hard constraint during decoding.
+    """
     customer_codes = [r.customer_code for r in packing_rows if r.customer_code]
     unique_customers = []
     seen = set()

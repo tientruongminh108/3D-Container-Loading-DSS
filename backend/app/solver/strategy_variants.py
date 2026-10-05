@@ -557,6 +557,8 @@ def decode_group_individual_dynamic(
       minimize residual free volume, and immediately explode into individual cartons.
     If use_dynamic_blocks is False (Variant D):
       Place cartons individually according to the group's posture choice.
+
+    # TODO(owner decision): enforce LIFO in decoder
     """
     settings = get_settings()
     contact_wt = settings.CONTACT_RATIO_WEIGHT

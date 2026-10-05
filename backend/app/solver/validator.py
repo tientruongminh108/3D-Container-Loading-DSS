@@ -174,8 +174,42 @@ def validate_solution(
                         f"lighter Box {s.box_id} ({s.weight_kg:.2f} kg)"
                     )
 
+    # 8. LIFO Delivery Order (soft metric for LCL mode)
+    # Earlier drop-off carton (lower sequence) must not be trapped behind a later drop-off carton (higher sequence)
+    # towards the door (+X direction) in overlapping Y-Z profile.
+    lifo_conflicts = 0
+    lifo_blocked_cartons = 0
+    if is_lcl:
+        blocked_ids = set()
+        for i in range(n):
+            b1 = placed_boxes[i]
+            seq1 = getattr(b1, "customer_sequence", 0) or 0
+            if seq1 <= 0:
+                continue
+            b1_x2 = b1.x + b1.actual_length
+            b1_y2 = b1.y + b1.actual_width
+            b1_z2 = b1.z + b1.actual_height
 
-    total_violations = sum(violations.values())
+            for j in range(n):
+                if i == j:
+                    continue
+                b2 = placed_boxes[j]
+                seq2 = getattr(b2, "customer_sequence", 0) or 0
+                if seq2 <= 0:
+                    continue
+                # If b1 has earlier delivery than b2 (seq1 < seq2)
+                # and b2 is closer to the door (+X) than b1
+                if seq1 < seq2 and (b2.x + b2.actual_length) > b1_x2 + eps:
+                    ov_y = min(b1_y2, b2.y + b2.actual_width) - max(b1.y, b2.y)
+                    ov_z = min(b1_z2, b2.z + b2.actual_height) - max(b1.z, b2.z)
+                    if ov_y > eps and ov_z > eps:
+                        lifo_conflicts += 1
+                        blocked_ids.add(b1.box_id)
+        lifo_blocked_cartons = len(blocked_ids)
+
+    # LIFO is reported as a soft metric (does not fail is_valid hard constraint check)
+    violations["lifo"] = lifo_conflicts
+    total_violations = sum(v for k, v in violations.items() if k != "lifo")
     is_valid = (total_violations == 0)
 
     # Compute additional physical load metrics for analysis
@@ -211,6 +245,8 @@ def validate_solution(
         "physical_fill_rate": physical_fill_rate,
         "max_height_cm": max_z,
         "top_surface_height_std": top_surface_std,
+        "lifo_conflicts": lifo_conflicts if is_lcl else None,
+        "lifo_blocked_cartons": lifo_blocked_cartons if is_lcl else None,
     }
 
     return ValidationReport(
