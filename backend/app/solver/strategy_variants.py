@@ -26,7 +26,6 @@ from app.solver.constraints import (
     check_non_overlap,
     check_container_bounds,
     check_corner_clearance,
-    check_stackability,
 )
 from app.solver.placement import _add_box_extreme_points, is_better_tie_break
 from app.solver.fitness import calculate_fitness, FitnessResult
@@ -648,11 +647,11 @@ def decode_group_individual_dynamic(
                         if not check_non_overlap(cand_bbox, placed_grid_bboxes):
                             continue
 
-                        # Stackability check (support ratio >= 0.60 + weight hierarchy)
-                        if not check_stackability(cand_bbox, placed_grid_bboxes, rep_box, placed_grid_data):
-                            continue
-
-                        # Per-carton physical stackability check
+                        # Per-carton physical stackability check (support ratio >= 0.60 and
+                        # weight hierarchy for every bottom-layer carton of the candidate grid).
+                        # NOTE: a grid-level check_stackability() must NOT be used here: it only
+                        # sees one representative Box per supporter grid (posture LWH), so it
+                        # mis-measures multi-carton and rotated supporters.
                         if not check_grid_cartons_stackability(
                             ep, nx, ny, c_act.length + gap, c_act.width + gap,
                             c_act, rep_box.weight_kg, placed_grids
