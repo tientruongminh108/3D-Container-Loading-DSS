@@ -1,11 +1,19 @@
 from typing import List, Tuple
 from dataclasses import dataclass
 from collections import defaultdict
-from itertools import chain
 from app.config import get_settings
 from app.solver.geometry import BoundingBox, Position, calculate_cog, check_cog_balance, FLOOR_EPSILON
 from app.solver.parsing import Box
 from app.solver.block_generation import Block
+
+
+def _actual_volume(unit) -> float:
+    """Actual l*w*h of a carton (or static block) in cm^3."""
+    if hasattr(unit, "length_cm") and hasattr(unit, "width_cm") and hasattr(unit, "height_cm"):
+        return float(unit.length_cm * unit.width_cm * unit.height_cm)
+    if hasattr(unit, "volume") and callable(unit.volume):
+        return float(unit.volume())
+    return 0.0
 
 
 @dataclass
@@ -18,6 +26,7 @@ class FitnessResult:
     stacking_violations: int
     stability_violations: int
     frag_penalty: float = 0.0
+    unplaced_volume: float = 0.0
 
 
 def calculate_fitness(
@@ -81,21 +90,21 @@ def calculate_fitness(
             if footprint > 0 and (support_area / footprint) < settings.SUPPORT_RATIO:
                 stability_violations += 1
 
-    # Fitness per Section 5.3.2:
-    # fitness = -(unplaced_count * UNPLACED_RANK_WEIGHT)
-    #           + (E / container_volume)
-    #           - cog_weight * (B1_norm + B2_norm + B3_norm)
-    #           - INFEASIBLE_PENALTY if B4==0 or B5==0
-    
-    max_box_weight = max(
-        (getattr(b, 'weight_kg', 0.0)
-         for b in chain(placed_data, (u for u, _ in unplaced))),
-        default=1.0,
-    ) or 1.0
-
-    unplaced_weight_penalty = sum(
-        settings.UNPLACED_RANK_WEIGHT * (1.0 + getattr(u, 'weight_kg', 0.0) / max_box_weight)
-        for u, _ in unplaced
+    # Fitness (all terms normalised so that the volume metric dominates):
+    #   fitness = fill_rate
+    #             - w_cog  * (B1 + B2 + B3)
+    #             - w_frag * frag_penalty
+    #             - UNPLACED_VOLUME_WEIGHT * (unplaced_volume / container_volume)
+    #             - UNPLACED_COUNT_WEIGHT  * (unplaced_count / (placed_count + unplaced_count))
+    #             - INFEASIBLE_PENALTY          if stacking / stability violations
+    # unplaced_volume uses the ACTUAL l*w*h of the unplaced cartons.
+    unplaced_volume = sum(_actual_volume(u) for u, _ in unplaced)
+    total_count = len(placed_data) + unplaced_count
+    unplaced_volume_frac = unplaced_volume / container_volume if container_volume > 0 else 0.0
+    unplaced_count_frac = unplaced_count / total_count if total_count > 0 else 0.0
+    unplaced_penalty = (
+        settings.UNPLACED_VOLUME_WEIGHT * unplaced_volume_frac
+        + settings.UNPLACED_COUNT_WEIGHT * unplaced_count_frac
     )
 
     # Anti-fragmentation penalty (exposed frontier)
@@ -133,15 +142,12 @@ def calculate_fitness(
         - frag_weight * frag_penalty
     )
 
-    total_box_count = len(placed_data) + unplaced_count
-    INFEASIBLE_PENALTY = -(total_box_count * settings.UNPLACED_RANK_WEIGHT) - 1000
-
     feasible = (stacking_violations == 0 and stability_violations == 0)
 
     fitness = (
-        -unplaced_weight_penalty
-        + fill_term
-        + (0 if feasible else INFEASIBLE_PENALTY)
+        fill_term
+        - unplaced_penalty
+        - (0.0 if feasible else settings.INFEASIBLE_PENALTY)
     )
 
     return FitnessResult(
@@ -153,4 +159,5 @@ def calculate_fitness(
         stacking_violations=stacking_violations,
         stability_violations=stability_violations,
         frag_penalty=frag_penalty,
+        unplaced_volume=unplaced_volume,
     )

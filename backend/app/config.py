@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     MAX_WEIGHT_UTILIZATION: float = 1.0
     COG_TOLERANCE_XY: float = 0.05  # ±5% of length/width
     COG_TOLERANCE_Z: float = 0.10   # +10% of height
+    # Legacy: no longer used by calculate_fitness (replaced by the normalised
+    # UNPLACED_VOLUME_WEIGHT / UNPLACED_COUNT_WEIGHT blend below); kept for backwards
+    # compatibility with tests/configuration that still read it.
     UNPLACED_RANK_WEIGHT: float = 2.0
     CORNER_BLOCK_X_CM: float = CORNER_BLOCK_X_CM
     CORNER_BLOCK_Y_CM: float = CORNER_BLOCK_Y_CM
@@ -79,7 +82,11 @@ class Settings(BaseSettings):
     FITNESS_VOLUME_WEIGHT: float = 1.0
     FITNESS_COG_PENALTY_WEIGHT: float = 0.3  # cog_weight
     FITNESS_FRAG_PENALTY_WEIGHT: float = 0.5  # anti-fragmentation weight omega_frag (exposed frontier)
-    # INFEASIBLE_PENALTY computed per run
+    # Unplaced penalties are normalised (fractions of container volume / carton count) so the
+    # GA optimises the reported metric (physical fill) instead of placed-carton count.
+    UNPLACED_VOLUME_WEIGHT: float = 0.25
+    UNPLACED_COUNT_WEIGHT: float = 0.30
+    INFEASIBLE_PENALTY: float = 1000.0  # plain large constant, independent of carton count
 
     # Default container (used if none selected)
     DEFAULT_CONTAINER_TYPE: str = "40HC"

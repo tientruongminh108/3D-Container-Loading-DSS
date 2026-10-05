@@ -92,3 +92,58 @@ class TestFitnessAntiFragmentation:
 
         res = calculate_fitness([], [], [(u, "NO_SPACE")], container_dims, max_weight)
         assert res.frag_penalty == 0.0
+
+
+class TestFitnessUnplacedBlend:
+    """A3: unplaced penalty is a normalised volume/count blend aligned with the fill metric."""
+
+    CONTAINER = Dimensions(400.0, 200.0, 200.0)
+    MAX_W = 20000.0
+
+    def test_leaving_out_small_carton_beats_leaving_out_large_carton(self):
+        big = create_box("big", 100.0, 100.0, 100.0)
+        small = create_box("small", 10.0, 10.0, 10.0)
+        # Both layouts end at x=300, same unplaced COUNT (1); only the volume differs.
+        placed_big = BoundingBox(200.0, 50.0, 0.0, 300.0, 150.0, 100.0)
+        placed_small = BoundingBox(290.0, 95.0, 0.0, 300.0, 105.0, 10.0)
+
+        leave_small = calculate_fitness([placed_big], [big], [(small, "no_space")], self.CONTAINER, self.MAX_W)
+        leave_big = calculate_fitness([placed_small], [small], [(big, "no_space")], self.CONTAINER, self.MAX_W)
+
+        assert leave_small.unplaced_count == leave_big.unplaced_count == 1
+        assert leave_small.unplaced_volume == pytest.approx(10.0 ** 3)
+        assert leave_big.unplaced_volume == pytest.approx(100.0 ** 3)
+        assert leave_small.fitness > leave_big.fitness
+
+    def test_more_placed_volume_beats_more_placed_count(self):
+        large = create_box("large", 200.0, 200.0, 200.0)
+        smalls = [create_box(f"s{i}", 20.0, 20.0, 20.0) for i in range(3)]
+        one_large = calculate_fitness(
+            [BoundingBox(100.0, 0.0, 0.0, 300.0, 200.0, 200.0)], [large],
+            [(s, "no_space") for s in smalls], self.CONTAINER, self.MAX_W,
+        )
+        three_small = calculate_fitness(
+            [
+                BoundingBox(170.0, 90.0, 0.0, 190.0, 110.0, 20.0),
+                BoundingBox(190.0, 90.0, 0.0, 210.0, 110.0, 20.0),
+                BoundingBox(210.0, 90.0, 0.0, 230.0, 110.0, 20.0),
+            ],
+            smalls, [(large, "no_space")], self.CONTAINER, self.MAX_W,
+        )
+        assert three_small.unplaced_count < one_large.unplaced_count  # old objective preferred this
+        assert one_large.fitness > three_small.fitness
+
+    def test_infeasible_penalty_is_a_plain_constant(self):
+        settings = get_settings()
+        floating = create_box("f", 20.0, 20.0, 20.0)
+        floor = create_box("g", 20.0, 20.0, 20.0)
+        bb_float = BoundingBox(0.0, 0.0, 50.0, 20.0, 20.0, 70.0)  # no support -> stability violation
+        one = calculate_fitness([bb_float], [floating], [], self.CONTAINER, self.MAX_W)
+        two = calculate_fitness(
+            [bb_float, BoundingBox(100.0, 0.0, 0.0, 120.0, 20.0, 20.0)], [floating, floor], [],
+            self.CONTAINER, self.MAX_W,
+        )
+        assert one.stability_violations == two.stability_violations == 1
+        assert one.fitness < -settings.INFEASIBLE_PENALTY + 1.0
+        assert two.fitness < -settings.INFEASIBLE_PENALTY + 1.0
+        assert abs(one.fitness - two.fitness) < 1.0  # no per-carton component in the penalty
