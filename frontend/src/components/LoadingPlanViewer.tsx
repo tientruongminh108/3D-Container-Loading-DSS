@@ -204,9 +204,9 @@ function Scene({
 
   return (
     <>
-      <ambientLight intensity={0.75} />
-      <directionalLight position={[L * 1.2, H * 2.5, W * 1.5]} intensity={1.1} />
-      <directionalLight position={[-L * 1.2, H * 1.5, -W * 1.5]} intensity={0.5} />
+      <ambientLight intensity={0.85} />
+      <directionalLight position={[L * 1.2, H * 2.5, W * 1.5]} intensity={0.8} />
+      <directionalLight position={[-L * 1.2, H * 1.5, -W * 1.5]} intensity={0.35} />
 
       <ContainerWireframe container={container} />
 
@@ -225,7 +225,7 @@ function Scene({
       ))}
 
       <CogMarker metrics={metrics} containerL={L} containerW={W} />
-      <gridHelper args={[Math.max(L, W) * 1.3, 40, '#cbd5e1', '#e2e8f0']} />
+      <gridHelper args={[Math.max(L, W) * 1.3, 40, '#94a3b8', '#cbd5e1']} />
     </>
   )
 }
@@ -417,11 +417,11 @@ export function LoadingPlanViewer({ result, onNewRun }: LoadingPlanViewerProps) 
       })()}
 
       {/* 3D Viewport Content */}
-      <div className="viewer-content relative bg-slate-900 rounded-xl overflow-hidden shadow-inner" style={{ minHeight: '480px', height: '540px' }}>
+      <div className="viewer-content relative bg-slate-100 border border-slate-200 rounded-xl overflow-hidden shadow-sm" style={{ minHeight: '480px', height: '540px' }}>
         <Canvas
           camera={{ position: cameraPos, fov: 48, near: 1, far: camDist * 15 }}
           style={{ width: '100%', height: '100%' }}
-          onCreated={({ gl }) => { gl.setClearColor('#0f172a', 1) }}
+          onCreated={({ gl }) => { gl.setClearColor('#f8fafc', 1) }}
         >
           <Scene
             placedBoxes={displayedBoxes}
@@ -444,23 +444,23 @@ export function LoadingPlanViewer({ result, onNewRun }: LoadingPlanViewerProps) 
 
         {/* Floating Inspection HUD (Top Left) */}
         {activeInspectBox && (
-          <div className="absolute top-4 left-4 z-10 bg-slate-800/90 backdrop-blur border border-slate-700 text-white rounded-lg p-3 text-xs shadow-lg max-w-xs pointer-events-none">
-            <div className="flex items-center justify-between gap-2 border-b border-slate-700 pb-1.5 mb-1.5">
-              <span className="font-semibold text-blue-400">Step #{activeInspectBox.step_index}</span>
+          <div className="absolute top-4 left-4 z-10 bg-white/95 backdrop-blur border border-slate-200 text-slate-800 rounded-lg p-3 text-xs shadow-md max-w-xs pointer-events-none">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-semibold text-blue-600">Step #{activeInspectBox.step_index}</span>
               <span className="font-mono text-slate-400">{activeInspectBox.box_id}</span>
             </div>
             <div className="space-y-1">
-              <div><span className="text-slate-400">SKU:</span> <span className="font-medium text-slate-200">{activeInspectBox.item_id}</span></div>
+              <div><span className="text-slate-400">SKU:</span> <span className="font-medium text-slate-800">{activeInspectBox.item_id}</span></div>
               {activeInspectBox.description && (
-                <div><span className="text-slate-400">Desc:</span> <span className="text-slate-200">{activeInspectBox.description}</span></div>
+                <div><span className="text-slate-400">Desc:</span> <span className="text-slate-800">{activeInspectBox.description}</span></div>
               )}
-              <div><span className="text-slate-400">PO:</span> <span className="text-slate-200">{activeInspectBox.po_no}</span></div>
+              <div><span className="text-slate-400">PO:</span> <span className="text-slate-800">{activeInspectBox.po_no}</span></div>
               {activeInspectBox.customer_code && (
-                <div><span className="text-slate-400">Customer:</span> <span className="text-emerald-400">{activeInspectBox.customer_code}</span></div>
+                <div><span className="text-slate-400">Customer:</span> <span className="text-emerald-600 font-medium">{activeInspectBox.customer_code}</span></div>
               )}
-              <div><span className="text-slate-400">Dimensions:</span> <span className="text-slate-200">{activeInspectBox.actual_length} &times; {activeInspectBox.actual_width} &times; {activeInspectBox.actual_height} cm</span></div>
-              <div><span className="text-slate-400">Weight:</span> <span className="text-slate-200">{activeInspectBox.weight_kg} kg</span></div>
-              <div><span className="text-slate-400">Position (X,Y,Z):</span> <span className="font-mono text-slate-300">({activeInspectBox.x.toFixed(1)}, {activeInspectBox.y.toFixed(1)}, {activeInspectBox.z.toFixed(1)}) cm</span></div>
+              <div><span className="text-slate-400">Dimensions:</span> <span className="text-slate-800">{activeInspectBox.actual_length} &times; {activeInspectBox.actual_width} &times; {activeInspectBox.actual_height} cm</span></div>
+              <div><span className="text-slate-400">Weight:</span> <span className="text-slate-800">{activeInspectBox.weight_kg} kg</span></div>
+              <div><span className="text-slate-400">Position (X,Y,Z):</span> <span className="font-mono text-slate-700">({activeInspectBox.x.toFixed(1)}, {activeInspectBox.y.toFixed(1)}, {activeInspectBox.z.toFixed(1)}) cm</span></div>
             </div>
           </div>
         )}

@@ -7,6 +7,7 @@ for end-to-end infrastructure stabilization before the mathematical solver runs.
 from typing import List, Dict, Optional, Tuple, Any
 import uuid
 from datetime import datetime, timezone
+import colorsys
 
 from app.core.models import (
     RunResult,
@@ -25,18 +26,7 @@ from app.core.models import (
 )
 from app.core.database import Item as DBItem, Container as DBContainer
 
-COLOR_PALETTE = [
-    "#3b82f6",  # Blue
-    "#10b981",  # Emerald
-    "#f59e0b",  # Amber
-    "#8b5cf6",  # Purple
-    "#ec4899",  # Pink
-    "#06b6d4",  # Cyan
-    "#ef4444",  # Red
-    "#84cc16",  # Lime
-    "#14b8a6",  # Teal
-    "#f97316",  # Orange
-]
+
 
 
 def run_deterministic_mock_pack(
@@ -115,6 +105,15 @@ def run_deterministic_mock_pack(
         -(c["length_cm"] * c["width_cm"] * c["height_cm"]),
         c["item_id"],
     ))
+
+    distinct_skus = sorted(list({c["item_id"] for c in carton_units if c.get("item_id") is not None}))
+    n_distinct = len(distinct_skus)
+    sku_color_map = {}
+    if n_distinct > 0:
+        for rank, sku in enumerate(distinct_skus):
+            h = rank / n_distinct
+            r, g, b = colorsys.hls_to_rgb(h, 0.55, 0.55)
+            sku_color_map[sku] = f"#{int(round(r * 255)):02x}{int(round(g * 255)):02x}{int(round(b * 255)):02x}"
 
     placed_boxes: List[PlacedBox] = []
     unplaced_cartons: List[UnplacedCarton] = []
@@ -201,8 +200,7 @@ def run_deterministic_mock_pack(
 
         # Placed successfully
         step_counter += 1
-        color_idx = (carton["customer_sequence"] - 1) % len(COLOR_PALETTE)
-        box_color = COLOR_PALETTE[color_idx]
+        box_color = sku_color_map.get(carton["item_id"], "#3b82f6")
 
         placed_box = PlacedBox(
             box_id=carton["box_id"],
@@ -251,8 +249,8 @@ def run_deterministic_mock_pack(
         cog_x, cog_y, cog_z = round(L / 2.0, 2), round(W / 2.0, 2), round(H / 2.0, 2)
 
     total_cbm = round(container_vol / 1_000_000.0, 3)
-    used_cbm = round(used_vol / 1_000_000.0, 3)
-    unused_cbm = round(max(0.0, (container_vol - used_vol) / 1_000_000.0), 3)
+    used_cbm = round(placed_vol / 1_000_000.0, 3)
+    unused_cbm = round(max(0.0, (container_vol - placed_vol) / 1_000_000.0), 3)
 
     metrics = LoadMetrics(
         placed_count=len(placed_boxes),

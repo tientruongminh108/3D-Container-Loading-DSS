@@ -21,6 +21,7 @@ from app.core.models import (
 )
 from datetime import datetime, timezone
 import uuid
+import colorsys
 
 
 @dataclass
@@ -415,27 +416,23 @@ def build_run_result(
             b.x += wall_offset
             b.y += wall_offset
 
-    COLOR_PALETTE = [
-        "#3b82f6",  # Blue
-        "#10b981",  # Emerald
-        "#f59e0b",  # Amber
-        "#8b5cf6",  # Purple
-        "#ec4899",  # Pink
-        "#06b6d4",  # Cyan
-        "#ef4444",  # Red
-        "#84cc16",  # Lime
-        "#14b8a6",  # Teal
-        "#f97316",  # Orange
-    ]
-
     # Assign sequential step_index and color to all placed boxes.
     # Sort rear-to-door (ascending x) within each customer sequence so that
     # Step 1 begins at the rear wall, matching the loading strategy.
     all_placed_boxes.sort(key=lambda b: (b.customer_sequence, b.x, b.z, b.y))
+
+    distinct_skus = sorted(list({b.item_id for b in all_placed_boxes if b.item_id is not None}))
+    n_distinct = len(distinct_skus)
+    sku_color_map = {}
+    if n_distinct > 0:
+        for rank, sku in enumerate(distinct_skus):
+            h = rank / n_distinct
+            r, g, b = colorsys.hls_to_rgb(h, 0.55, 0.55)
+            sku_color_map[sku] = f"#{int(round(r * 255)):02x}{int(round(g * 255)):02x}{int(round(b * 255)):02x}"
+
     for idx, b in enumerate(all_placed_boxes):
         b.step_index = idx + 1
-        color_idx = (b.customer_sequence - 1) % len(COLOR_PALETTE)
-        b.color = COLOR_PALETTE[color_idx]
+        b.color = sku_color_map.get(b.item_id, "#3b82f6")
 
     nominal_dims = None
     if container_spec is not None and hasattr(container_spec, "internal_length_cm"):

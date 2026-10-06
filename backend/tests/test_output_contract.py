@@ -647,3 +647,99 @@ class TestOutputCoordinateIntegrity:
             key1 = (b1.customer_sequence, b1.x, b1.z, b1.y)
             key2 = (b2.customer_sequence, b2.x, b2.z, b2.y)
             assert key1 <= key2, f"Step ordering violated between #{b1.step_index} and #{b2.step_index}: {key1} > {key2}"
+
+    @pytest.mark.slow
+    def test_distinct_color_per_sku_multi_sku_pipeline(self):
+        """Verify that every distinct item_id gets a unique color and same item_id gets identical color (15+ SKUs)."""
+        import pandas as pd
+        from app.solver.pipeline import run_pipeline
+        from app.core.models import RunOptions
+
+        container_df = pd.DataFrame([{
+            "Container_Type": "40HC",
+            "Internal_Length_cm": 1203.2,
+            "Internal_Width_cm": 235.2,
+            "Internal_Height_cm": 269.8,
+            "Max_Weight_kg": 28500.0,
+        }])
+
+        num_skus = 20
+        item_master_rows = []
+        packing_list_rows = []
+        for i in range(num_skus):
+            sku = f"SKU_{i:03d}"
+            item_master_rows.append({
+                "Item_ID": sku,
+                "Description": f"Item {sku}",
+                "Length_cm": 40.0,
+                "Width_cm": 30.0,
+                "Height_cm": 25.0,
+                "Weight_kg": 5.0,
+                "This_Way_Up": True,
+                "Permitted_Postures": "LWH",
+            })
+            packing_list_rows.append({
+                "PO_No": f"PO_{i:03d}",
+                "Item_ID": sku,
+                "Qty_Pcs": 4,
+                "Qty_Cartons": 2,
+                "Customer_Code": "CUST1",
+            })
+
+        item_master_df = pd.DataFrame(item_master_rows)
+        packing_list_df = pd.DataFrame(packing_list_rows)
+        options = RunOptions(population_size=10, generations=10, tolerance_gap_cm=0.0)
+
+        pipeline_res = run_pipeline(packing_list_df, item_master_df, container_df, options=options)
+        boxes = pipeline_res.result.placed_boxes
+        assert len(boxes) > 0
+
+        # Group colors by item_id
+        sku_to_colors = {}
+        for b in boxes:
+            assert b.color is not None, f"Box {b.box_id} missing color"
+            assert b.color.startswith("#"), f"Box {b.box_id} color {b.color} is not hex"
+            sku_to_colors.setdefault(b.item_id, set()).add(b.color)
+
+        # 1. Same SKU always has exactly 1 color
+        for sku, colors in sku_to_colors.items():
+            assert len(colors) == 1, f"SKU {sku} has multiple colors assigned: {colors}"
+
+        # 2. Distinct SKUs have strictly distinct colors (no collision)
+        all_assigned_colors = [list(colors)[0] for colors in sku_to_colors.values()]
+        assert len(all_assigned_colors) == len(set(all_assigned_colors)), (
+            f"Color collision detected! Assigned colors count {len(all_assigned_colors)} vs unique {len(set(all_assigned_colors))}"
+        )
+        assert len(sku_to_colors) == num_skus, f"Expected all {num_skus} SKUs placed, got {len(sku_to_colors)}"
+
+    @pytest.mark.slow
+    def test_color_per_sku_packing_list_01_real_dataset(self):
+        """Run real dataset packing_list_01.csv (30 distinct SKUs) and assert no color collisions."""
+        import pandas as pd
+        from pathlib import Path
+        from app.solver.pipeline import run_pipeline
+        from app.core.models import RunOptions
+
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        data_dir = repo_root / "data"
+
+        container_df = pd.read_csv(data_dir / "container_spec.csv")
+        item_master_df = pd.read_csv(data_dir / "item_master_01.csv")
+        packing_list_df = pd.read_csv(data_dir / "packing_list_01.csv")
+
+        options = RunOptions(population_size=10, generations=10, tolerance_gap_cm=0.0)
+        pipeline_res = run_pipeline(packing_list_df, item_master_df, container_df, options=options)
+        boxes = pipeline_res.result.placed_boxes
+        assert len(boxes) > 0
+
+        sku_to_colors = {}
+        for b in boxes:
+            sku_to_colors.setdefault(b.item_id, set()).add(b.color)
+
+        for sku, colors in sku_to_colors.items():
+            assert len(colors) == 1, f"SKU {sku} has inconsistent colors: {colors}"
+
+        all_colors = [list(c)[0] for c in sku_to_colors.values()]
+        assert len(all_colors) == len(set(all_colors)), (
+            f"Color collision in packing_list_01: {len(all_colors)} SKUs vs {len(set(all_colors))} unique colors"
+        )

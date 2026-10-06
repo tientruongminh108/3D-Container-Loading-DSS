@@ -51,3 +51,62 @@ def test_shelf_settings_defaults():
     assert hasattr(settings, "SHELF_OCCUPANCY_RATIO")
     assert settings.min_usable_shelf_cm == settings.MIN_USABLE_SHELF_CM
     assert settings.shelf_occupancy_ratio == settings.SHELF_OCCUPANCY_RATIO
+
+
+def test_run_deterministic_mock_pack():
+    from app.services.mock_packer import run_deterministic_mock_pack
+    from app.core.models import Container, PackingListRow, Item
+    from datetime import datetime, timezone
+
+    container = Container(
+        id=1,
+        container_type="20GP",
+        internal_length_cm=589.8,
+        internal_width_cm=235.2,
+        internal_height_cm=239.3,
+        max_weight_kg=28000.0,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    rows = [
+        PackingListRow(po_no="PO1", item_id="ITEM_1", qty_pcs=10, qty_cartons=5, customer_code="CUST1"),
+        PackingListRow(po_no="PO2", item_id="ITEM_2", qty_pcs=10, qty_cartons=3, customer_code="CUST1"),
+    ]
+
+    item_lookup = {
+        "ITEM_1": Item(
+            id=1,
+            item_id="ITEM_1",
+            description="Item 1",
+            length_cm=40.0,
+            width_cm=30.0,
+            height_cm=20.0,
+            weight_kg=10.0,
+            this_way_up=True,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        ),
+        "ITEM_2": Item(
+            id=2,
+            item_id="ITEM_2",
+            description="Item 2",
+            length_cm=50.0,
+            width_cm=35.0,
+            height_cm=25.0,
+            weight_kg=15.0,
+            this_way_up=True,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        ),
+    }
+
+    result = run_deterministic_mock_pack(container, rows, item_lookup)
+    assert result.status == "completed"
+    assert result.metrics.placed_count == 8
+    assert result.metrics.used_volume_cbm is not None
+    assert result.metrics.unused_volume_cbm is not None
+    # Check that each SKU gets distinct color
+    sku_colors = {b.item_id: b.color for b in result.placed_boxes}
+    assert len(sku_colors) == 2
+    assert len(set(sku_colors.values())) == 2
