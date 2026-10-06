@@ -55,7 +55,7 @@ def compute_welch_t_test(x1: np.ndarray, x2: np.ndarray) -> Tuple[float, float]:
     p_val = math.erfc(z / math.sqrt(2))
     return round(t, 4), round(p_val, 4)
 
-BACKEND_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
 from app.config import get_settings

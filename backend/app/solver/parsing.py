@@ -86,7 +86,7 @@ def parse_container_spec(
     elif tolerance_gap is not None:
         clearance = tolerance_gap
     else:
-        clearance = getattr(settings, "CONTAINER_WALL_CLEARANCE_CM", 2.0)
+        clearance = getattr(settings, "CONTAINER_WALL_CLEARANCE_CM", 0.0)
 
     return ContainerSpec(
         container_type=str(row["Container_Type"]),
@@ -309,7 +309,7 @@ def parse_and_join(
 ) -> Tuple[List[Box], ContainerSpec, PackingListPreview, ShipmentType]:
     settings = get_settings()
     item_gap = tolerance_gap if tolerance_gap is not None else settings.TOLERANCE_GAP_CM
-    wall_pad = wall_clearance if wall_clearance is not None else getattr(settings, "CONTAINER_WALL_CLEARANCE_CM", 2.0)
+    wall_pad = wall_clearance if wall_clearance is not None else getattr(settings, "CONTAINER_WALL_CLEARANCE_CM", 0.0)
 
     container = parse_container_spec(container_df, wall_clearance=wall_pad)
     items = parse_item_master(item_master_df)

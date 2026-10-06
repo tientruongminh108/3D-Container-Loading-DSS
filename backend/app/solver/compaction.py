@@ -638,6 +638,31 @@ def run_compaction_pass(
         if len(placed_bboxes) == n_before:
             break
 
+    # 4b. Remove-and-reinsert repair: swap an unplaced unit for a placed tower that blocks it.
+    if get_settings().REPAIR_ENABLED and unplaced:
+        from app.solver.repair import repair_swap
+        msr = min_support_ratio if min_support_ratio is not None else get_settings().SUPPORT_RATIO
+        for _ in range(get_settings().REPAIR_ROUNDS):
+            placed_bboxes, placed_data, placed_postures, unplaced, current_weight, n_sw = repair_swap(
+                placed_bboxes, placed_data, placed_postures, unplaced, container_dims,
+                current_weight, max_weight, is_lcl, msr,
+            )
+            if not n_sw:
+                break
+            placed_bboxes = [copy.deepcopy(b) for b in placed_bboxes]
+            for _ in range(MAX_COMPACT_ITERS):
+                before = [(b.min_x, b.min_y, b.min_z) for b in placed_bboxes]
+                placed_bboxes = compact_x_rear(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio, placed_postures=placed_postures)
+                placed_bboxes = compact_y_sidewall(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio, placed_postures=placed_postures)
+                placed_bboxes = compact_z_downward(placed_bboxes, placed_data, container_dims, is_lcl, min_support_ratio, placed_postures=placed_postures)
+                if before == [(b.min_x, b.min_y, b.min_z) for b in placed_bboxes]:
+                    break
+            placed_bboxes, placed_data, placed_postures, unplaced, current_weight = rescan_and_insert(
+                placed_bboxes=placed_bboxes, placed_data=placed_data, placed_postures=placed_postures,
+                unplaced=unplaced, container_dims=container_dims, current_weight=current_weight,
+                max_weight=max_weight, is_lcl=is_lcl,
+            )
+
     # 4. Recompute fitness
     fitness_res = calculate_fitness(
         placed_bboxes=placed_bboxes,

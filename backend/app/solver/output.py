@@ -409,7 +409,7 @@ def build_run_result(
     else:
         from app.config import get_settings
         settings = get_settings()
-        wall_offset = getattr(settings, "CONTAINER_WALL_CLEARANCE_CM", 2.0)
+        wall_offset = getattr(settings, "CONTAINER_WALL_CLEARANCE_CM", 0.0)
 
     if wall_offset > 0:
         for b in all_placed_boxes:
