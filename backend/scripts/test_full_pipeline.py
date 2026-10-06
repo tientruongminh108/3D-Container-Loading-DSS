@@ -7,7 +7,7 @@ import pandas as pd
 from pathlib import Path
 
 # Add backend to path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.solver.pipeline import run_pipeline
 
@@ -84,8 +84,7 @@ def main():
     from app.core.models import RunOptions
     options = RunOptions(generations=args.generations, population_size=args.pop_size)
 
-    data_dir = Path(__file__).parent.parent / "data"
-    b_data_dir = Path(__file__).parent / "data"
+    data_dir = Path(__file__).resolve().parent.parent.parent / "data"
 
     item_master_df = pd.read_csv(data_dir / "item_master.csv")
     container_df = pd.read_csv(data_dir / "container_spec.csv")

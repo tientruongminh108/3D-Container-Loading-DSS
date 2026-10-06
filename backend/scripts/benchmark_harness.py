@@ -25,7 +25,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import pandas as pd
 
 # Add backend directory to sys.path
-BACKEND_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
 from app.config import get_settings
@@ -167,7 +167,7 @@ def run_single_seed(
         container_df = pd.read_csv(root_data / "container_spec.csv")
     elif dataset_type == "FCL":
         packing_list_df = pd.read_csv(root_data / "packing_list_02.csv")
-        item_master_df = pd.read_csv(root_data / "item_master_02.csv")
+        item_master_df = pd.read_csv(root_data / "item_master.csv")
         container_df = pd.read_csv(root_data / "container_spec.csv")
     else:
         raise ValueError(f"Unknown dataset_type: {dataset_type}")

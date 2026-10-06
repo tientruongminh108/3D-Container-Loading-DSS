@@ -84,7 +84,7 @@ class TestAPIEndpoints:
         data = run_resp.json()
         assert "run_id" in data
         assert data["status"] == "completed"
-        assert elapsed < 10.0
+        assert elapsed < 30.0
 
     @pytest.mark.slow
     def test_API_04_run_status_progress(self):

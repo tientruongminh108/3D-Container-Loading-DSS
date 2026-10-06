@@ -158,6 +158,8 @@ def load_dataset(dataset_name: str, data_dir: Path) -> Tuple[pd.DataFrame, pd.Da
     base_name = dataset_name.split("_")[0]
     p_file = data_dir / f"packing_list_{dataset_name}.csv"
     i_file = data_dir / f"item_master_{base_name}.csv"
+    if not i_file.exists():
+        i_file = data_dir / "item_master.csv"
     c_file = data_dir / "container_spec.csv"
 
     df_p = pd.read_csv(p_file)

@@ -16,7 +16,7 @@ import random
 from pathlib import Path
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.solver.parsing import parse_and_join
 from app.solver.sorting import initial_sort, resort_after_blocks
@@ -113,7 +113,7 @@ def test_dataset_sweep(
 
 
 def main():
-    base_dir = Path(__file__).parent.parent
+    base_dir = Path(__file__).resolve().parent.parent.parent
     data_dir = base_dir / "data"
 
     try:

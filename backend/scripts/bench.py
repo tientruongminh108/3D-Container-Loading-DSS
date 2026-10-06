@@ -55,7 +55,8 @@ def _load_instance(name: str):
     container_df = pd.read_csv(DATA_DIR / "container_spec.csv")
     if name in REAL_INSTANCES:
         pack_df = pd.read_csv(DATA_DIR / f"packing_list_{name}.csv")
-        item_df = pd.read_csv(DATA_DIR / f"item_master_{name}.csv")
+        im_file = DATA_DIR / f"item_master_{name}.csv"
+        item_df = pd.read_csv(im_file if im_file.exists() else DATA_DIR / "item_master.csv")
     else:
         from gen_instances import HELD_OUT, generate_instance
 

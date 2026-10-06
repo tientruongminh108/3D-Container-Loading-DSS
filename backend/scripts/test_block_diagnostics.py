@@ -4,7 +4,9 @@
 import sys, pandas as pd
 from pathlib import Path
 from collections import Counter
-sys.path.insert(0, str(Path(__file__).parent))
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+data_dir = BACKEND_DIR.parent / "data"
+sys.path.insert(0, str(BACKEND_DIR))
 
 from app.solver.pipeline import run_pipeline
 from app.solver.block_generation import Block, build_blocks
@@ -44,7 +46,6 @@ def test_block_at_origin(block, container_dims, max_weight, is_lcl):
         })
     return results
 
-data_dir = Path('..')/'data'
 pl = pd.read_csv(data_dir/'packing_list.csv')
 im = pd.read_csv(data_dir/'item_master.csv')
 ct = pd.read_csv(data_dir/'container_spec.csv')
@@ -101,7 +102,7 @@ for b in blocks:
     posture_results = test_block_at_origin(b, container_dims, container_spec.max_weight_kg, is_lcl)
     all_rej = True
     for pr in posture_results:
-        status = '✓' if pr['bounds_ok'] and pr['constraints_ok'] else '✗'
+        status = '[OK]' if pr['bounds_ok'] and pr['constraints_ok'] else '[FAIL]'
         why = []
         if not pr['bounds_ok']: why.append('BOUNDS')
         if not pr['constraints_ok']: why.append(f'CONSTRAINT({pr["reason"]})')
