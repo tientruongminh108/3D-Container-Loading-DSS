@@ -5,8 +5,8 @@ from functools import lru_cache
 
 
 # Top-corner casting obstruction dimensions (ISO 1161 approximation: 17.8 x 16.2 x 11.8 cm)
-CORNER_BLOCK_X_CM: float = 17.8
-CORNER_BLOCK_Y_CM: float = 16.2
+CORNER_BLOCK_X_CM: float = 11.0
+CORNER_BLOCK_Y_CM: float = 10.0
 CORNER_BLOCK_Z_CM: float = 11.8
 
 
@@ -64,7 +64,8 @@ class Settings(BaseSettings):
     DEAD_SPACE_WEIGHT: float = 1.5  # Penalty for unusable roof headroom left by a dynamic grid (0 disables)
     EP_CANDIDATE_LIMIT: int = 100  # Max extreme points evaluated per lot step in group decoder
     GA_WORKERS: int = 0  # Process workers for GA evaluation (0=auto: 2 if standalone, 1 if nested)
-    TOLERANCE_GAP_CM: float = 2.0
+    CONTAINER_WALL_CLEARANCE_CM: float = 2.0  # Clearance maintained between 4 container walls and cargo
+    TOLERANCE_GAP_CM: float = 0.0  # Inter-carton gap (0.0 cm: cartons packed flush with zero spacing)
     SUPPORT_RATIO: float = 0.6
     CONTACT_RATIO_WEIGHT: float = 1.0
     RESIDUAL_VOLUME_WEIGHT: float = 1.0

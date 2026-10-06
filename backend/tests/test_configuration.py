@@ -11,7 +11,8 @@ class TestConfigurationDefaults:
         settings = get_settings()
         assert settings.POPULATION_SIZE == 60
         assert settings.GENERATIONS == 100
-        assert settings.TOLERANCE_GAP_CM == 2.0
+        assert settings.TOLERANCE_GAP_CM == 0.0
+        assert settings.CONTAINER_WALL_CLEARANCE_CM == 2.0
         assert settings.FITNESS_COG_PENALTY_WEIGHT == 0.3
 
     def test_CFG_02_cog_penalty_weight_bound(self):
@@ -32,7 +33,8 @@ class TestConfigurationDefaults:
         defaults = {
             "POPULATION_SIZE": 60,
             "GENERATIONS": 100,
-            "TOLERANCE_GAP_CM": 2.0,
+            "TOLERANCE_GAP_CM": 0.0,
+            "CONTAINER_WALL_CLEARANCE_CM": 2.0,
             "FITNESS_COG_PENALTY_WEIGHT": 0.3,
             "FITNESS_FRAG_PENALTY_WEIGHT": 0.5,
             "UNPLACED_RANK_WEIGHT": 2.0,

@@ -398,21 +398,22 @@ def build_run_result(
 
     all_placed_boxes = shift_downward_cartons(all_placed_boxes, is_lcl=is_lcl)
 
-    # Shift placed boxes by +gap in X and Y into physical container coordinates
-    gap = 0.0
-    if options and getattr(options, "tolerance_gap_cm", None) is not None:
-        gap = float(options.tolerance_gap_cm)
-    elif container_spec is not None and hasattr(container_spec, "internal_length_cm") and hasattr(container_spec, "usable_length"):
-        gap = max(0.0, (float(container_spec.internal_length_cm) - float(container_spec.usable_length)) / 2.0)
+    # Shift placed boxes by wall clearance margin in X and Y into physical container coordinates
+    # so cargo maintains the required 2.0 cm buffer from container walls.
+    wall_offset = 0.0
+    if container_spec is not None and hasattr(container_spec, "internal_length_cm") and hasattr(container_spec, "usable_length"):
+        wall_offset = max(0.0, (float(container_spec.internal_length_cm) - float(container_spec.usable_length)) / 2.0)
+    elif options and getattr(options, "container_wall_clearance_cm", None) is not None:
+        wall_offset = float(options.container_wall_clearance_cm)
     else:
         from app.config import get_settings
         settings = get_settings()
-        gap = getattr(settings, "TOLERANCE_GAP_CM", 0.0)
+        wall_offset = getattr(settings, "CONTAINER_WALL_CLEARANCE_CM", 2.0)
 
-    if gap > 0:
+    if wall_offset > 0:
         for b in all_placed_boxes:
-            b.x += gap
-            b.y += gap
+            b.x += wall_offset
+            b.y += wall_offset
 
     COLOR_PALETTE = [
         "#3b82f6",  # Blue

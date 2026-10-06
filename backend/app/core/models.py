@@ -139,7 +139,8 @@ class PackingListPreview(BaseModel):
 class RunOptions(BaseModel):
     population_size: int = Field(default=30, ge=10, le=200)
     generations: int = Field(default=40, ge=10, le=500)
-    tolerance_gap_cm: float = Field(default=2.0, ge=0.0, le=10.0)
+    tolerance_gap_cm: float = Field(default=0.0, ge=0.0, le=10.0)
+    container_wall_clearance_cm: float = Field(default=2.0, ge=0.0, le=10.0)
     use_static_blocks: Optional[bool] = None
     group_key: Optional[str] = None
     ga_level: Optional[str] = None

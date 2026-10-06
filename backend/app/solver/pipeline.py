@@ -213,9 +213,10 @@ def run_pipeline(
         np.random.seed(seed)
 
     gap = float(options.tolerance_gap_cm) if options and options.tolerance_gap_cm is not None else settings.TOLERANCE_GAP_CM
+    wall_clearance = float(options.container_wall_clearance_cm) if options and getattr(options, "container_wall_clearance_cm", None) is not None else getattr(settings, "CONTAINER_WALL_CLEARANCE_CM", 2.0)
 
     boxes, container_spec, preview, shipment_type = parse_and_join(
-        packing_list_df, item_master_df, container_df, tolerance_gap=gap
+        packing_list_df, item_master_df, container_df, tolerance_gap=gap, wall_clearance=wall_clearance
     )
 
     if progress_callback:

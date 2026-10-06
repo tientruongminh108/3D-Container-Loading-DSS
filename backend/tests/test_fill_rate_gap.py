@@ -8,10 +8,12 @@ from app.config import get_settings
 
 def test_tolerance_gap_defaults():
     settings = get_settings()
-    assert settings.TOLERANCE_GAP_CM == 2.0
+    assert settings.TOLERANCE_GAP_CM == 0.0
+    assert settings.CONTAINER_WALL_CLEARANCE_CM == 2.0
 
     options = RunOptions()
-    assert options.tolerance_gap_cm == 2.0
+    assert options.tolerance_gap_cm == 0.0
+    assert options.container_wall_clearance_cm == 2.0
 
 
 def test_calculate_metrics_nominal_volume_denominator():
