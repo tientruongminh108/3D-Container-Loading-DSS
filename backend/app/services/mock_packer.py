@@ -7,7 +7,7 @@ for end-to-end infrastructure stabilization before the mathematical solver runs.
 from typing import List, Dict, Optional, Any
 import uuid
 from datetime import datetime, timezone
-import colorsys
+from app.solver.colors import generate_sku_color_map
 
 from app.core.models import (
     RunResult,
@@ -104,14 +104,7 @@ def run_deterministic_mock_pack(
         c["item_id"],
     ))
 
-    distinct_skus = sorted(list({c["item_id"] for c in carton_units if c.get("item_id") is not None}))
-    n_distinct = len(distinct_skus)
-    sku_color_map = {}
-    if n_distinct > 0:
-        for rank, sku in enumerate(distinct_skus):
-            h = rank / n_distinct
-            r, g, b = colorsys.hls_to_rgb(h, 0.55, 0.55)
-            sku_color_map[sku] = f"#{int(round(r * 255)):02x}{int(round(g * 255)):02x}{int(round(b * 255)):02x}"
+    sku_color_map = generate_sku_color_map(c.get("item_id") for c in carton_units)
 
     placed_boxes: List[PlacedBox] = []
     unplaced_cartons: List[UnplacedCarton] = []

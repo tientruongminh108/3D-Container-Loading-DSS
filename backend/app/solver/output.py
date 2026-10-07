@@ -20,7 +20,7 @@ from app.core.models import (
 )
 from datetime import datetime, timezone
 import uuid
-import colorsys
+from app.solver.colors import generate_sku_color_map
 
 
 @dataclass
@@ -443,14 +443,7 @@ def build_run_result(
     # Step 1 begins at the rear wall, matching the loading strategy.
     all_placed_boxes.sort(key=lambda b: (b.customer_sequence, b.x, b.z, b.y))
 
-    distinct_skus = sorted(list({b.item_id for b in all_placed_boxes if b.item_id is not None}))
-    n_distinct = len(distinct_skus)
-    sku_color_map = {}
-    if n_distinct > 0:
-        for rank, sku in enumerate(distinct_skus):
-            h = rank / n_distinct
-            r, g, b = colorsys.hls_to_rgb(h, 0.55, 0.55)
-            sku_color_map[sku] = f"#{int(round(r * 255)):02x}{int(round(g * 255)):02x}{int(round(b * 255)):02x}"
+    sku_color_map = generate_sku_color_map(b.item_id for b in all_placed_boxes)
 
     for idx, b in enumerate(all_placed_boxes):
         b.step_index = idx + 1
