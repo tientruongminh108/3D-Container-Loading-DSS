@@ -1,3 +1,4 @@
+from __future__ import annotations
 from enum import Enum
 from typing import Optional, List, Union, Dict, Any
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -22,6 +23,7 @@ class ShipmentType(str, Enum):
 class UnplacedReason(str, Enum):
     NO_SPACE = "no_space"
     LIFO_BLOCKED = "lifo_blocked"
+    WEIGHT_CAPACITY = "weight_capacity"
 
 
 class RunStatus(str, Enum):
@@ -112,6 +114,8 @@ class PackingListRow(BaseModel):
 class PackingListUpload(BaseModel):
     rows: List[PackingListRow]
     filename: Optional[str] = None
+    container_id: Optional[int] = None
+    options: Optional[RunOptions] = None
 
 
 class PackingListPreviewRow(BaseModel):

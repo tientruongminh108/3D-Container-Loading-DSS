@@ -399,13 +399,12 @@ def build_run_result(
 
     all_placed_boxes = shift_downward_cartons(all_placed_boxes, is_lcl=is_lcl)
 
-    # Shift placed boxes by wall clearance margin in X and Y into physical container coordinates
-    # so cargo maintains the required 2.0 cm buffer from container walls.
+    # Shift placed boxes by wall clearance margin in X and Y into physical container coordinates.
     wall_offset = 0.0
-    if container_spec is not None and hasattr(container_spec, "internal_length_cm") and hasattr(container_spec, "usable_length"):
-        wall_offset = max(0.0, (float(container_spec.internal_length_cm) - float(container_spec.usable_length)) / 2.0)
-    elif options and getattr(options, "container_wall_clearance_cm", None) is not None:
+    if options and getattr(options, "container_wall_clearance_cm", None) is not None:
         wall_offset = float(options.container_wall_clearance_cm)
+    elif container_spec is not None and getattr(container_spec, "wall_clearance_cm", None) is not None:
+        wall_offset = float(container_spec.wall_clearance_cm)
     else:
         from app.config import get_settings
         settings = get_settings()

@@ -48,10 +48,12 @@ class ContainerSpec:
     usable_length: float
     usable_width: float
     usable_height: float
+    wall_clearance_cm: float = 0.0
 
 
 def parse_container_spec(
     df: pd.DataFrame,
+    *,
     wall_clearance: Optional[float] = None,
     tolerance_gap: Optional[float] = None,
 ) -> ContainerSpec:
@@ -81,12 +83,12 @@ def parse_container_spec(
             raise ValidationError(f"Container {col} must be a number > 0")
 
     settings = get_settings()
-    if wall_clearance is not None:
-        clearance = wall_clearance
-    elif tolerance_gap is not None:
-        clearance = tolerance_gap
-    else:
-        clearance = getattr(settings, "CONTAINER_WALL_CLEARANCE_CM", 0.0)
+    wall = wall_clearance if wall_clearance is not None else getattr(settings, "CONTAINER_WALL_CLEARANCE_CM", 0.0)
+    gap = tolerance_gap if tolerance_gap is not None else getattr(settings, "TOLERANCE_GAP_CM", 0.0)
+
+    usable_l = float(row["Internal_Length_cm"]) - 2.0 * wall + gap
+    usable_w = float(row["Internal_Width_cm"]) - 2.0 * wall + gap
+    usable_h = float(row["Internal_Height_cm"])
 
     return ContainerSpec(
         container_type=str(row["Container_Type"]),
@@ -94,9 +96,10 @@ def parse_container_spec(
         internal_width_cm=float(row["Internal_Width_cm"]),
         internal_height_cm=float(row["Internal_Height_cm"]),
         max_weight_kg=float(row["Max_Weight_kg"]),
-        usable_length=float(row["Internal_Length_cm"]) - 2 * clearance,
-        usable_width=float(row["Internal_Width_cm"]) - 2 * clearance,
-        usable_height=float(row["Internal_Height_cm"]),
+        usable_length=usable_l,
+        usable_width=usable_w,
+        usable_height=usable_h,
+        wall_clearance_cm=wall,
     )
 
 
@@ -177,13 +180,17 @@ def _check_item_fits_container(
     container: "ContainerSpec",
     permitted: List,
 ) -> bool:
-    """Return True if the item fits inside the container's usable interior in at least one posture."""
+    """Return True if the item fits inside the physical container interior
+    (accounting for wall clearance: L - 2*wall, W - 2*wall, H) in at least one posture."""
     from app.solver.geometry import Dimensions as Dims
     base = Dims(item.length_cm, item.width_cm, item.height_cm)
-    cl, cw, ch = container.usable_length, container.usable_width, container.usable_height
+    wall = getattr(container, "wall_clearance_cm", 0.0)
+    max_l = container.internal_length_cm - 2.0 * wall
+    max_w = container.internal_width_cm - 2.0 * wall
+    max_h = container.internal_height_cm
     for posture in permitted:
         d = base.apply_posture(posture)
-        if d.length <= cl and d.width <= cw and d.height <= ch:
+        if d.length <= max_l and d.width <= max_w and d.height <= max_h:
             return True
     return False
 
@@ -216,11 +223,15 @@ def expand_packing_list(
             permitted = get_permitted_postures(item.this_way_up)
             permitted_cache[row.item_id] = permitted
             if not _check_item_fits_container(item, container, permitted):
+                wall = getattr(container, "wall_clearance_cm", 0.0)
+                max_l = container.internal_length_cm - 2.0 * wall
+                max_w = container.internal_width_cm - 2.0 * wall
+                max_h = container.internal_height_cm
                 raise ValidationError(
                     f"Item_ID '{item.item_id}' "
                     f"({item.length_cm:g}x{item.width_cm:g}x{item.height_cm:g} cm) "
-                    f"does not fit inside the container's usable interior "
-                    f"({container.usable_length:g}x{container.usable_width:g}x{container.usable_height:g} cm) "
+                    f"does not fit inside the container interior "
+                    f"({max_l:g}x{max_w:g}x{max_h:g} cm) "
                     f"in any orientation. Check the item's dimensions or the container selection."
                 )
 
@@ -311,7 +322,7 @@ def parse_and_join(
     item_gap = tolerance_gap if tolerance_gap is not None else settings.TOLERANCE_GAP_CM
     wall_pad = wall_clearance if wall_clearance is not None else getattr(settings, "CONTAINER_WALL_CLEARANCE_CM", 0.0)
 
-    container = parse_container_spec(container_df, wall_clearance=wall_pad)
+    container = parse_container_spec(container_df, wall_clearance=wall_pad, tolerance_gap=item_gap)
     items = parse_item_master(item_master_df)
 
     required_packing = ["Item_ID", "PO_No", "Qty_Cartons"]

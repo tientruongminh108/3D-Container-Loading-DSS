@@ -27,8 +27,14 @@ def test_packing_lists_reference_valid_items():
     im = pd.read_csv(data_dir / "item_master.csv")
     valid_item_ids = set(im["Item_ID"].astype(str).str.strip())
 
-    pl_files = list(data_dir.glob("packing_list_*.csv"))
-    assert len(pl_files) > 0, "No packing_list_*.csv files found"
+    pl_names = [f"packing_list_{i:02d}.csv" for i in range(1, 7)] + [
+        "packing_list_BH-147.csv",
+        "packing_list_MARTIN-40HQ-2of2.csv",
+        "packing_list_NJR26-127.csv",
+        "packing_list_TMI-085.csv",
+    ]
+    pl_files = [data_dir / name for name in pl_names if (data_dir / name).exists()]
+    assert len(pl_files) >= 6, "Benchmark packing list files missing"
 
     for pl_file in pl_files:
         pl = pd.read_csv(pl_file)

@@ -300,20 +300,22 @@ class ContainerService:
         self.db.delete(db_container)
         self.db.commit()
 
-    def to_container_spec(self, container: Container):
-        from app.solver.parsing import ContainerSpec
-        settings = get_settings()
-        gap = settings.TOLERANCE_GAP_CM
-        return ContainerSpec(
-            container_type=container.container_type,
-            internal_length_cm=container.internal_length_cm,
-            internal_width_cm=container.internal_width_cm,
-            internal_height_cm=container.internal_height_cm,
-            max_weight_kg=container.max_weight_kg,
-            usable_length=container.internal_length_cm - 2 * gap,
-            usable_width=container.internal_width_cm - 2 * gap,
-            usable_height=container.internal_height_cm,
-        )
+    def to_container_spec(
+        self,
+        container: Container,
+        *,
+        wall_clearance: Optional[float] = None,
+        tolerance_gap: Optional[float] = None,
+    ):
+        from app.solver.parsing import parse_container_spec
+        df = pd.DataFrame([{
+            "Container_Type": container.container_type,
+            "Internal_Length_cm": container.internal_length_cm,
+            "Internal_Width_cm": container.internal_width_cm,
+            "Internal_Height_cm": container.internal_height_cm,
+            "Max_Weight_kg": container.max_weight_kg,
+        }])
+        return parse_container_spec(df, wall_clearance=wall_clearance, tolerance_gap=tolerance_gap)
 
 
 class RunService:
@@ -322,30 +324,47 @@ class RunService:
         self.item_service = ItemService(db)
         self.container_service = ContainerService(db)
 
-    def validate_packing_list(self, upload: PackingListUpload) -> ValidationResponse:
+    def validate_packing_list(
+        self,
+        upload: PackingListUpload,
+        container_id: Optional[int] = None,
+        options: Optional[RunOptions] = None,
+    ) -> ValidationResponse:
         try:
             df = pd.DataFrame([row.model_dump() for row in upload.rows])
             items_dict = self.item_service.get_all_as_dict()
 
+            cid = container_id or getattr(upload, "container_id", None)
+            opts = options or getattr(upload, "options", None)
+
             container_service = self.container_service
-            containers = container_service.list(limit=1)
-            if not containers:
+            target_container = None
+            if cid is not None:
+                target_container = container_service.get(cid)
+            else:
+                containers = container_service.list(limit=1)
+                if containers:
+                    target_container = containers[0]
+
+            if not target_container:
                 return ValidationResponse(
                     valid=False,
                     errors=[ValError(field="container", message="No containers available")],
                 )
 
-            container_spec = container_service.to_container_spec(containers[0])
+            settings = get_settings()
+            wall = opts.container_wall_clearance_cm if opts and getattr(opts, "container_wall_clearance_cm", None) is not None else getattr(settings, "CONTAINER_WALL_CLEARANCE_CM", 0.0)
+            gap = opts.tolerance_gap_cm if opts and getattr(opts, "tolerance_gap_cm", None) is not None else getattr(settings, "TOLERANCE_GAP_CM", 0.0)
+
+            container_spec = container_service.to_container_spec(target_container, wall_clearance=wall, tolerance_gap=gap)
 
             from app.solver.parsing import expand_packing_list, build_preview, detect_shipment_type
-            from app.config import get_settings
-            settings = get_settings()
 
             packing_rows = upload.rows
             shipment_type, customer_count, customer_sequence = detect_shipment_type(packing_rows)
 
             boxes, preview_rows = expand_packing_list(
-                packing_rows, items_dict, container_spec, customer_sequence, settings.TOLERANCE_GAP_CM
+                packing_rows, items_dict, container_spec, customer_sequence, gap
             )
 
             preview = build_preview(preview_rows, shipment_type, customer_count)
@@ -550,10 +569,21 @@ class RunService:
         if db_run.result_json:
             return RunResult.model_validate_json(db_run.result_json)
 
+        wall = None
+        gap = None
+        if db_run.options_json:
+            try:
+                import json
+                opt_dict = json.loads(db_run.options_json)
+                wall = opt_dict.get("container_wall_clearance_cm")
+                gap = opt_dict.get("tolerance_gap_cm")
+            except Exception:
+                pass
+
         return RunResult(
             run_id=db_run.run_id,
             status=RunStatus(db_run.status),
-            container=self.container_service.to_container_spec(db_run.container),
+            container=self.container_service.to_container_spec(db_run.container, wall_clearance=wall, tolerance_gap=gap),
             metrics=None,
             placed_boxes=[],
             unplaced_cartons=[],

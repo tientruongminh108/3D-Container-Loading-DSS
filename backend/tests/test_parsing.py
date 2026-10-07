@@ -17,8 +17,12 @@ def test_parse_container_spec():
     assert spec.container_type == "40HC"
     assert spec.internal_length_cm == 1203.2
     assert spec.usable_length == 1203.2  # default 0.0 clearance
+    spec_with_wall = parse_container_spec(df, wall_clearance=2.0)
+    assert spec_with_wall.usable_length == 1203.2 - 4.0
     spec_with_gap = parse_container_spec(df, tolerance_gap=2.0)
-    assert spec_with_gap.usable_length == 1203.2 - 4.0
+    assert spec_with_gap.usable_length == 1203.2 + 2.0
+    spec_with_both = parse_container_spec(df, wall_clearance=1.0, tolerance_gap=2.0)
+    assert spec_with_both.usable_length == 1203.2 - 2.0 * 1.0 + 2.0
 
 
 def test_parse_item_master():
