@@ -325,6 +325,7 @@ class PackingListBase(BaseModel):
     total_volume_cm3: float = 0
     shipment_type: ShipmentType = ShipmentType.FCL
     customer_count: int = 0
+    total_skus: int = 0
 
 
 class PackingListCreate(PackingListBase):
@@ -339,6 +340,7 @@ class PackingListUpdate(BaseModel):
     total_volume_cm3: Optional[float] = None
     shipment_type: Optional[ShipmentType] = None
     customer_count: Optional[int] = None
+    total_skus: Optional[int] = None
 
 
 class PackingList(PackingListBase):
@@ -360,6 +362,7 @@ class PackingListSummary(BaseModel):
     total_volume_cm3: float
     shipment_type: ShipmentType
     customer_count: int
+    total_skus: int = 0
     created_at: datetime
     updated_at: datetime
 

@@ -62,11 +62,6 @@ function ContainerWireframe({ container }: { container: Container }) {
         <planeGeometry args={[W, H]} />
         <meshBasicMaterial color="#3b82f6" transparent opacity={0.08} side={2} />
       </mesh>
-      <Html position={[L / 2 + 10, H + 12, 0]} center>
-        <div style={{ fontSize: 11, color: '#2563eb', fontWeight: 700, whiteSpace: 'nowrap', background: 'rgba(255,255,255,0.85)', padding: '2px 6px', borderRadius: 4, border: '1px solid #93c5fd' }}>
-          CONTAINER DOOR
-        </div>
-      </Html>
     </group>
   )
 }

@@ -750,7 +750,8 @@ class PackingListService:
         self.db.commit()
 
     def _to_pydantic(self, db_pl: DBPackingList) -> PydanticPackingList:
-        rows = json.loads(db_pl.rows_json)
+        rows = json.loads(db_pl.rows_json) if db_pl.rows_json else []
+        total_skus = len({r.get('item_id') for r in rows if isinstance(r, dict) and r.get('item_id')})
         return PydanticPackingList(
             id=db_pl.id,
             name=db_pl.name,
@@ -761,11 +762,19 @@ class PackingListService:
             total_volume_cm3=db_pl.total_volume_cm3,
             shipment_type=ShipmentType(db_pl.shipment_type),
             customer_count=db_pl.customer_count,
+            total_skus=total_skus,
             created_at=db_pl.created_at,
             updated_at=db_pl.updated_at,
         )
 
     def _to_summary(self, db_pl: DBPackingList) -> PackingListSummary:
+        total_skus = 0
+        if db_pl.rows_json:
+            try:
+                rows = json.loads(db_pl.rows_json)
+                total_skus = len({r.get('item_id') for r in rows if isinstance(r, dict) and r.get('item_id')})
+            except Exception:
+                total_skus = 0
         return PackingListSummary(
             id=db_pl.id,
             name=db_pl.name,
@@ -775,6 +784,7 @@ class PackingListService:
             total_volume_cm3=db_pl.total_volume_cm3,
             shipment_type=ShipmentType(db_pl.shipment_type),
             customer_count=db_pl.customer_count,
+            total_skus=total_skus,
             created_at=db_pl.created_at,
             updated_at=db_pl.updated_at,
         )

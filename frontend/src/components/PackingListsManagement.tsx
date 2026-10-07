@@ -49,7 +49,7 @@ export function PackingListsManagement() {
         dateCreated: pl.created_at,
         shipmentType: pl.shipment_type,
         customerCount: pl.customer_count,
-        totalSkus: (pl as any).rows?.length || (pl.total_cartons > 100 ? 15 : 5),
+        totalSkus: pl.total_skus ?? ((pl as any).rows ? new Set((pl as any).rows.map((r: any) => r.item_id)).size : 0),
         totalCartons: pl.total_cartons,
         status: 'Pending',
       }))

@@ -283,6 +283,7 @@ export interface PackingListCreate {
   total_volume_cm3: number
   shipment_type: ShipmentType
   customer_count: number
+  total_skus?: number
   preview?: PackingListPreview
 }
 
@@ -294,6 +295,7 @@ export interface PackingListUpdate {
   total_volume_cm3?: number
   shipment_type?: ShipmentType
   customer_count?: number
+  total_skus?: number
 }
 
 export interface PackingListSummary {
@@ -305,6 +307,7 @@ export interface PackingListSummary {
   total_volume_cm3: number
   shipment_type: ShipmentType
   customer_count: number
+  total_skus?: number
   created_at: string
   updated_at: string
 }
