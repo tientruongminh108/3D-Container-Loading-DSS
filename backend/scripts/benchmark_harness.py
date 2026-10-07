@@ -167,7 +167,7 @@ def run_single_seed(
         container_df = pd.read_csv(root_data / "container_spec.csv")
     elif dataset_type == "FCL":
         packing_list_df = pd.read_csv(root_data / "packing_list_02.csv")
-        item_master_df = pd.read_csv(root_data / "item_master.csv")
+        item_master_df = pd.read_csv(root_data / "item_master_02.csv")
         container_df = pd.read_csv(root_data / "container_spec.csv")
     else:
         raise ValueError(f"Unknown dataset_type: {dataset_type}")

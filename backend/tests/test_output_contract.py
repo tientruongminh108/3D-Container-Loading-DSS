@@ -724,7 +724,7 @@ class TestOutputCoordinateIntegrity:
         data_dir = repo_root / "data"
 
         container_df = pd.read_csv(data_dir / "container_spec.csv")
-        item_master_df = pd.read_csv(data_dir / "item_master.csv")
+        item_master_df = pd.read_csv(data_dir / "item_master_01.csv")
         packing_list_df = pd.read_csv(data_dir / "packing_list_01.csv")
 
         options = RunOptions(population_size=10, generations=10, tolerance_gap_cm=0.0)
