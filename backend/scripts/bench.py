@@ -18,7 +18,7 @@ Ceiling = total carton volume / nominal container volume.
 
 Usage (from ``backend/``)::
 
-    python scripts/bench.py                         # 10 instances, seeds 1 2 3, 30x40, gap 2.0
+    python scripts/bench.py                         # 10 instances, seeds 1 2 3, 30x40, gap 0.0
     python scripts/bench.py --instances 01 06 --pop 60 --gen 100 --seeds 1
     python scripts/bench.py --tag after_a1 --seeds 1 2 --workers 4
 """
@@ -111,7 +111,7 @@ def run_one(name: str, seed: int, pop: int, gen: int, gap: float, ga_workers: in
         "instance": name,
         "seed": seed,
         "fill_pct": 100.0 * placed_vol / nominal_volume,
-        "ceiling_pct": 100.0 * min(total_vol, nominal_volume) / nominal_volume,
+        "ceiling_pct": 100.0 * total_vol / nominal_volume,
         "placed": len(placed),
         "total": total_boxes,
         "wall_s": wall,
@@ -183,7 +183,8 @@ def main() -> int:
     ap.add_argument("--seeds", nargs="+", type=int, default=[1, 2, 3])
     ap.add_argument("--pop", type=int, default=30)
     ap.add_argument("--gen", type=int, default=40)
-    ap.add_argument("--gap", type=float, default=2.0)
+    ap.add_argument("--gap", nargs="+", type=float, default=[0.0],
+                    help="tolerance gap(s) to evaluate, e.g. --gap 0 2 (default [0.0])")
     ap.add_argument("--workers", type=int, default=4, help="parallel (instance, seed) runs")
     ap.add_argument("--ga-workers", type=int, default=None,
                     help="process workers INSIDE one GA run (default 1 when --workers>1, else auto=0)")
@@ -203,8 +204,16 @@ def main() -> int:
     names = list(dict.fromkeys(names))
     ga_workers = args.ga_workers if args.ga_workers is not None else (1 if args.workers > 1 else 0)
 
-    tasks: List[Tuple] = [(n, s, args.pop, args.gen, args.gap, ga_workers) for n in names for s in args.seeds]
-    print(f"{len(tasks)} runs  budget {args.pop}x{args.gen}  gap {args.gap}  "
+    gap_values = list(dict.fromkeys(args.gap))
+    gap_values.sort(key=lambda g: (g != 0.0, g))
+
+    tasks: List[Tuple] = [
+        (n, s, args.pop, args.gen, g, ga_workers)
+        for g in gap_values
+        for n in names
+        for s in args.seeds
+    ]
+    print(f"{len(tasks)} runs  budget {args.pop}x{args.gen}  gap {gap_values}  "
           f"workers {args.workers}  ga-workers {ga_workers}", flush=True)
 
     rows: List[Dict[str, Any]] = []
@@ -212,7 +221,7 @@ def main() -> int:
         for t in tasks:
             r = run_one(*t)
             rows.append(r)
-            print(f"  {r['instance']:12s} seed {r['seed']} fill {r['fill_pct']:.2f} "
+            print(f"  {r['instance']:12s} seed {r['seed']} gap {r['gap']} fill {r['fill_pct']:.2f} "
                   f"{r['wall_s']:.1f}s valid={r['is_valid']}", flush=True)
     else:
         with ProcessPoolExecutor(max_workers=args.workers) as ex:
@@ -220,15 +229,20 @@ def main() -> int:
             for f in as_completed(futs):
                 r = f.result()
                 rows.append(r)
-                print(f"  {r['instance']:12s} seed {r['seed']} fill {r['fill_pct']:.2f} "
-                      f"{r['wall_s']:.1f}s valid={r['is_valid']}", flush=True)
+                print(f"  {r['instance']:12s} seed {r['seed']} gap {r['gap']} fill {r['fill_pct']:.2f} "
+                  f"{r['wall_s']:.1f}s valid={r['is_valid']}", flush=True)
 
     print()
-    print_table(rows)
+    for g in gap_values:
+        gap_rows = [r for r in rows if r["gap"] == g]
+        if len(gap_values) > 1:
+            print(f"=== Results for gap {g} cm ===")
+        print_table(gap_rows)
+        print()
     if args.tag:
         RESULTS_DIR.mkdir(parents=True, exist_ok=True)
         path = RESULTS_DIR / f"{args.tag}.json"
-        path.write_text(json.dumps(sorted(rows, key=lambda r: (r["instance"], r["seed"])), indent=1))
+        path.write_text(json.dumps(sorted(rows, key=lambda r: (r["instance"], r["seed"], r["gap"])), indent=1))
         print(f"wrote {path}")
     return 0 if all(r["is_valid"] for r in rows) else 1
 

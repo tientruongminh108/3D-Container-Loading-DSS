@@ -203,7 +203,6 @@ def execute_single_run(
     opts = RunOptions(
         population_size=bud_cfg["population_size"],
         generations=bud_cfg["generations"],
-        tolerance_gap_cm=2.0,
         use_static_blocks=var_cfg["use_static_blocks"],
         group_key=var_cfg["group_key"],
         ga_level=var_cfg["ga_level"],
