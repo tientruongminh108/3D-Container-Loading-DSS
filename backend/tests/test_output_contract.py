@@ -742,3 +742,32 @@ class TestOutputCoordinateIntegrity:
         assert len(all_colors) == len(set(all_colors)), (
             f"Color collision in packing_list_01: {len(all_colors)} SKUs vs {len(set(all_colors))} unique colors"
         )
+
+    def test_no_floating_cartons_in_step_sequence(self):
+        """Verify that topological sort guarantees zero floating cartons during step-by-step loading.
+        Even when a top carton has a smaller X than its base, the base is always placed first.
+        """
+        from app.solver.output import sort_boxes_physically_stable
+
+        # Box 1: Base on floor at X=100, Z=0
+        base = PlacedBox(
+            box_id="BASE_1", item_id="ITEM_A", po_no="PO1", length_cm=50, width_cm=50, height_cm=50,
+            actual_length=50, actual_width=50, actual_height=50, weight_kg=10,
+            x=100.0, y=0.0, z=0.0, posture=Posture.LWH, customer_sequence=1
+        )
+        # Box 2: Middle box at X=95, Z=50 (overhanging towards smaller X)
+        middle = PlacedBox(
+            box_id="MID_1", item_id="ITEM_A", po_no="PO1", length_cm=50, width_cm=50, height_cm=50,
+            actual_length=50, actual_width=50, actual_height=50, weight_kg=10,
+            x=95.0, y=0.0, z=50.0, posture=Posture.LWH, customer_sequence=1
+        )
+        # Box 3: Top box at X=90, Z=100 (further overhanging towards smaller X)
+        top = PlacedBox(
+            box_id="TOP_1", item_id="ITEM_A", po_no="PO1", length_cm=50, width_cm=50, height_cm=50,
+            actual_length=50, actual_width=50, actual_height=50, weight_kg=10,
+            x=90.0, y=0.0, z=100.0, posture=Posture.LWH, customer_sequence=1
+        )
+
+        ordered = sort_boxes_physically_stable([top, middle, base])
+        step_ids = [b.box_id for b in ordered]
+        assert step_ids == ["BASE_1", "MID_1", "TOP_1"], f"Expected base to top loading order, got {step_ids}"

@@ -1,4 +1,5 @@
 from typing import List, Any, Optional
+import heapq
 from dataclasses import dataclass
 from app.solver.geometry import (
     BoundingBox,
@@ -382,6 +383,78 @@ def build_unplaced_cartons(
     return result
 
 
+def sort_boxes_physically_stable(boxes: List[PlacedBox]) -> List[PlacedBox]:
+    """Sort placed boxes into a physically stable loading sequence using topological sort with a min-heap.
+
+    Guarantees:
+    1. Zero floating cartons: No carton is ever placed before all cartons supporting it beneath are placed.
+    2. Loading strategy: Among all currently supported cartons, prioritizes
+       (customer_sequence, x, z, y) to maintain rear-to-door, floor-to-ceiling loading order.
+    """
+    n = len(boxes)
+    if n <= 1:
+        return boxes
+
+    # 1. Build support dependency graph:
+    # A directed edge i -> j means box i directly supports box j from below.
+    adj = [[] for _ in range(n)]
+    in_degree = [0] * n
+
+    for j in range(n):
+        bj = boxes[j]
+        if bj.z <= 0.01:
+            continue  # On floor, no support needed
+
+        bj_x1, bj_x2 = bj.x, bj.x + bj.actual_length
+        bj_y1, bj_y2 = bj.y, bj.y + bj.actual_width
+
+        for i in range(n):
+            if i == j:
+                continue
+            bi = boxes[i]
+            bi_top_z = bi.z + bi.actual_height
+            if abs(bi_top_z - bj.z) < 0.5:
+                bi_x1, bi_x2 = bi.x, bi.x + bi.actual_length
+                bi_y1, bi_y2 = bi.y, bi.y + bi.actual_width
+
+                ov_x = min(bj_x2, bi_x2) - max(bj_x1, bi_x1)
+                ov_y = min(bj_y2, bi_y2) - max(bj_y1, bi_y1)
+
+                if ov_x > 0.1 and ov_y > 0.1:
+                    adj[i].append(j)
+                    in_degree[j] += 1
+
+    # 2. Min-heap of available boxes (in-degree == 0)
+    # Heap items: (sort_key, box_index)
+    heap = []
+    for i in range(n):
+        if in_degree[i] == 0:
+            b = boxes[i]
+            key = (b.customer_sequence, round(b.x, 2), round(b.z, 2), round(b.y, 2), i)
+            heapq.heappush(heap, (key, i))
+
+    ordered_boxes = []
+    while heap:
+        _, curr_idx = heapq.heappop(heap)
+        ordered_boxes.append(boxes[curr_idx])
+
+        for dependent in adj[curr_idx]:
+            in_degree[dependent] -= 1
+            if in_degree[dependent] == 0:
+                b = boxes[dependent]
+                key = (b.customer_sequence, round(b.x, 2), round(b.z, 2), round(b.y, 2), dependent)
+                heapq.heappush(heap, (key, dependent))
+
+    # Fallback safety in case of any unreached nodes (acyclic Z ensures this is rare)
+    if len(ordered_boxes) < n:
+        seen = set(id(b) for b in ordered_boxes)
+        remaining = [b for b in boxes if id(b) not in seen]
+        remaining.sort(key=lambda b: (b.customer_sequence, b.x, b.z, b.y))
+        ordered_boxes.extend(remaining)
+
+    return ordered_boxes
+
+
 def build_run_result(
     individual: Individual,
     container_dims: Dimensions,
@@ -438,10 +511,10 @@ def build_run_result(
             b.x += wall_offset
             b.y += wall_offset
 
-    # Assign sequential step_index and color to all placed boxes.
-    # Sort rear-to-door (ascending x) within each customer sequence so that
-    # Step 1 begins at the rear wall, matching the loading strategy.
-    all_placed_boxes.sort(key=lambda b: (b.customer_sequence, b.x, b.z, b.y))
+    # Assign sequential step_index and color to all placed boxes using physically stable topological sort.
+    # Guarantees that cartons underneath are always loaded before cartons resting on top (no floating cartons),
+    # while strictly prioritizing rear-to-door (ascending x) and floor-to-ceiling (ascending z).
+    all_placed_boxes = sort_boxes_physically_stable(all_placed_boxes)
 
     sku_color_map = generate_sku_color_map(b.item_id for b in all_placed_boxes)
 

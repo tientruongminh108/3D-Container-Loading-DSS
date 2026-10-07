@@ -181,6 +181,7 @@ function Scene({
   selectedBoxId,
   hoveredBoxId,
   currentStep,
+  isStepping,
   onBoxClick,
   onBoxHover,
 }: {
@@ -190,6 +191,7 @@ function Scene({
   selectedBoxId: string | null
   hoveredBoxId: string | null
   currentStep: number
+  isStepping: boolean
   onBoxClick: (box: PlacedBox) => void
   onBoxHover: (box: PlacedBox | null) => void
 }) {
@@ -213,7 +215,7 @@ function Scene({
           containerW={W}
           isSelected={box.box_id === selectedBoxId}
           isHovered={box.box_id === hoveredBoxId}
-          isCurrentStep={box.step_index === currentStep}
+          isCurrentStep={isStepping && box.step_index === currentStep}
           onClick={() => onBoxClick(box)}
           onHover={(hovered) => onBoxHover(hovered ? box : null)}
         />
@@ -254,7 +256,6 @@ export function LoadingPlanViewer({ result, onNewRun }: LoadingPlanViewerProps) 
       timerRef.current = window.setInterval(() => {
         setCurrentStep((prev) => {
           if (prev >= totalBoxes) {
-            setIsPlaying(false)
             return totalBoxes
           }
           return prev + 1
@@ -268,6 +269,12 @@ export function LoadingPlanViewer({ result, onNewRun }: LoadingPlanViewerProps) 
     }
   }, [isPlaying, totalBoxes])
 
+  useEffect(() => {
+    if (currentStep >= totalBoxes && isPlaying) {
+      setIsPlaying(false)
+    }
+  }, [currentStep, totalBoxes, isPlaying])
+
   const displayedBoxes = useMemo(() => {
     return result.placed_boxes.filter((b) => (b.step_index ?? 1) <= currentStep)
   }, [result.placed_boxes, currentStep])
@@ -280,7 +287,11 @@ export function LoadingPlanViewer({ result, onNewRun }: LoadingPlanViewerProps) 
     return result.placed_boxes.find((b) => b.box_id === selectedBoxId)
   }, [result.placed_boxes, selectedBoxId])
 
-  const activeInspectBox = hoveredBox || selectedBox
+  const currentStepBox = useMemo(() => {
+    return result.placed_boxes.find((b) => b.step_index === currentStep)
+  }, [result.placed_boxes, currentStep])
+
+  const activeInspectBox = hoveredBox || selectedBox || (isPlaying || currentStep < totalBoxes ? currentStepBox : null)
 
   const cameraPos: [number, number, number] = [L * 0.95, H * 1.8, W * 1.8]
   const controlsTarget: [number, number, number] = [0, H / 2, 0]
@@ -391,10 +402,10 @@ export function LoadingPlanViewer({ result, onNewRun }: LoadingPlanViewerProps) 
             <div className="stat-card">
               <div className="stat-label">Placed Cartons</div>
               <div className="stat-value text-slate-800">
-                {displayedBoxes.length}<span className="stat-unit"> / {metrics.total_cartons}</span>
+                {metrics.placed_count}<span className="stat-unit"> / {metrics.total_cartons}</span>
               </div>
               <div className="text-[11px] text-slate-500 mt-1 font-medium">
-                {Math.round((displayedBoxes.length / (metrics.total_cartons || 1)) * 100)}% placed
+                {currentStep < totalBoxes ? `Step ${currentStep}/${totalBoxes} visible` : '100% placed'}
               </div>
             </div>
 
@@ -425,6 +436,7 @@ export function LoadingPlanViewer({ result, onNewRun }: LoadingPlanViewerProps) 
             selectedBoxId={selectedBoxId}
             hoveredBoxId={hoveredBox?.box_id || null}
             currentStep={currentStep}
+            isStepping={isPlaying || currentStep < totalBoxes}
             onBoxClick={handleBoxClick}
             onBoxHover={setHoveredBox}
           />
@@ -466,7 +478,7 @@ export function LoadingPlanViewer({ result, onNewRun }: LoadingPlanViewerProps) 
         <div className="card p-4 bg-white border border-slate-200 rounded-xl shadow-sm space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-sm text-slate-800">Sequence Loading Sequence:</span>
+              <span className="font-semibold text-sm text-slate-800">Loading Sequence:</span>
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
                 Step {currentStep} of {totalBoxes} ({Math.round((currentStep / totalBoxes) * 100)}%)
               </span>
