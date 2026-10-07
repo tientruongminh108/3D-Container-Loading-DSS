@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, List
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -13,10 +13,16 @@ CORNER_BLOCK_Z_CM: float = 11.8
 
 
 class Settings(BaseSettings):
-    # API
+    # API & CORS
     API_V1_PREFIX: str = "/api"
     PROJECT_NAME: str = "3D Container Loading DSS"
     DEBUG: bool = True
+    CORS_ALLOWED_ORIGINS: List[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
     # Database
     DATABASE_URL: str = "sqlite:///./data/app.db"

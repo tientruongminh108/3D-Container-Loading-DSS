@@ -2,6 +2,7 @@ from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass, field
 import random
 import os
+import multiprocessing
 from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 
@@ -890,8 +891,10 @@ def group_genetic_algorithm(
     executor = None
     if workers > 1:
         try:
+            mp_context = multiprocessing.get_context("spawn")
             executor = ProcessPoolExecutor(
                 max_workers=workers,
+                mp_context=mp_context,
                 initializer=_init_eval_worker,
                 initargs=(groups, container_dims, max_weight, is_lcl, use_dynamic_blocks, seed),
             )

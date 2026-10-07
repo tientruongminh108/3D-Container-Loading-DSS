@@ -245,6 +245,16 @@ All endpoints are prefixed with `/api` (configured in `Settings.API_V1_PREFIX`):
 | `POST` | `/api/packing-lists/upload-csv-and-save` | Upload CSV and save to database |
 | `POST` | `/api/packing-lists/validate` | Validate packing list schema and item references |
 
+### Execution Model & Request Timeouts (`/api/runs`)
+
+- **Synchronous Execution**: Both `POST /api/runs` and `POST /api/runs/quick` execute the complete optimization pipeline synchronously on a threadpool worker: parsing, dynamic block generation, GA exploration, extreme-point placement compaction, and post-compaction remove-and-reinsert repair (up to 3 rounds × 1200 trials). The worker thread is held for the entire duration of the solve.
+- **Expected Duration**:
+  - Small to medium instances (e.g. 50–150 cartons): ~5–15 seconds.
+  - Large instances (~300+ cartons with full repair enabled): ~30–60+ seconds depending on CPU speed and problem density.
+- **Timeout Implications**:
+  - Any reverse proxy, API gateway, or load balancer in front of the API (such as Nginx, Cloudflare, AWS ALB, Traefik) must configure an HTTP read/proxy timeout of at least **120–180 seconds** to avoid premature HTTP 504 Gateway Timeout errors.
+  - HTTP clients (e.g. `axios`, `requests`, `httpx`, or frontend fetch) must similarly set request timeouts to 180 seconds or disable request timeouts for run endpoints.
+
 ---
 
 ## Frontend Flow & UI
