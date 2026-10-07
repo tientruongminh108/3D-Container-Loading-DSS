@@ -99,22 +99,24 @@ def repair_swap(
     max_weight: float,
     is_lcl: bool = False,
     min_support_ratio: float = 0.6,
-    budget_s: Optional[float] = None,
+    max_trials: Optional[int] = None,
     max_candidates: Optional[int] = None,
 ):
     """Returns (bboxes, data, postures, unplaced, weight, n_swaps).
 
     Move: remove a placed unit P together with the tower resting on it, put the unplaced unit U into
     the freed region, then re-place the tower members one by one (bottom-up). Accepted only when the
-    total placed volume strictly increases.
+    total placed volume strictly increases. The work bound is a TRIAL COUNT, not wall-clock time,
+    so the same seed always gives the same layout on any machine.
     """
     from collections import Counter
 
     cfg = get_settings()
-    budget_s = cfg.REPAIR_BUDGET_S if budget_s is None else budget_s
+    max_trials = cfg.REPAIR_MAX_TRIALS if max_trials is None else max_trials
     max_candidates = cfg.REPAIR_MAX_CANDIDATES if max_candidates is None else max_candidates
     max_tower = cfg.REPAIR_MAX_TOWER
-    t0 = time.time()
+    t0 = time.perf_counter()  # diagnostics only: never used in a decision (keeps runs reproducible)
+    trials = 0
     bboxes, data, postures = list(placed_bboxes), list(placed_data), list(placed_postures)
     pending = list(unplaced)
     weight = current_weight
@@ -123,7 +125,7 @@ def repair_swap(
     last_seq = max((getattr(u, "customer_sequence", 0) for u in data), default=0)
 
     for U, reason in sorted(list(pending), key=lambda p: -_unit_volume(p[0])):
-        if time.time() - t0 > budget_s:
+        if trials >= max_trials:
             break
         uvol = _unit_volume(U)
         uw = getattr(U, "weight_kg", 0.0)
@@ -137,8 +139,9 @@ def repair_swap(
             towers.append((abs(tv - uvol), i, t, tv))
         towers.sort(key=lambda x: x[0])
         for _, i, T, tvol in towers[:max_candidates]:
-            if time.time() - t0 > budget_s:
+            if trials >= max_trials:
                 break
+            trials += 1
             Tset = set(T)
             region = (min(bboxes[k].min_x for k in T), max(bboxes[k].max_x for k in T),
                       min(bboxes[k].min_y for k in T), max(bboxes[k].max_y for k in T),
@@ -177,5 +180,5 @@ def repair_swap(
             n_swaps += 1
             stats["swap"] += 1
             break
-    logger.debug("repair stats %s elapsed %.1fs", dict(stats), time.time() - t0)
+    logger.debug("repair stats %s trials %d elapsed %.1fs", dict(stats), trials, time.perf_counter() - t0)
     return bboxes, data, postures, pending, weight, n_swaps

@@ -309,6 +309,13 @@ Key parameters defined in `backend/app/config.py`:
 | `FITNESS_FRAG_PENALTY_WEIGHT`| `0.5` | — | Penalty weight on frontier fragmentation |
 | `UNPLACED_VOLUME_WEIGHT` | `0.25` | — | Normalised penalty weight for unplaced carton volume fraction |
 | `UNPLACED_COUNT_WEIGHT` | `0.30` | — | Normalised penalty weight for unplaced carton count fraction |
+| `REPAIR_ENABLED` | `True` | — | Enables post-compaction remove-and-reinsert repair pass |
+| `REPAIR_MAX_TRIALS` | `1200` | — | Work budget per round expressed as maximum tower trial count for deterministic execution |
+| `REPAIR_MAX_TOWER` | `8` | — | Maximum number of cartons in a tower removed together during a swap evaluation |
+| `REPAIR_MAX_CANDIDATES` | `200` | — | Maximum candidate towers considered per unplaced carton in each round |
+| `REPAIR_ROUNDS` | `3` | — | Number of sequential remove-and-reinsert repair rounds executed |
+
+> **Repair Computational Cost**: Repair evaluates roughly 50 trials/s on a 300-carton instance, so 3 rounds × 1200 trials can add up to ~60 s on the largest instances (`REPAIR_MAX_TRIALS=300` gives about half of the gain at a third of the time; `REPAIR_ENABLED=false` turns it off).
 
 > **Note on Defaults**: When launched from the frontend wizard, `RunOptions` sends `population_size=30` and `generations=40` for responsive interactive response (~30–45s). When invoked directly via the backend API without options, the solver utilizes the config defaults of 60 individuals and 100 generations.
 

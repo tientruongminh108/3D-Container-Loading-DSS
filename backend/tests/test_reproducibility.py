@@ -76,3 +76,19 @@ def test_pipeline_seed_reproducibility(sample_data):
     assert coords1 == coords2
     assert res1.result.metrics.fill_rate == pytest.approx(res2.result.metrics.fill_rate, rel=1e-5)
     assert res1.result.metrics.weight_utilization == pytest.approx(res2.result.metrics.weight_utilization, rel=1e-5)
+
+
+@pytest.mark.slow
+def test_repair_path_is_reproducible():
+    from pathlib import Path
+    data_dir = Path(__file__).parent.parent.parent / "data"
+    pl = pd.read_csv(data_dir / "packing_list_06.csv")
+    im = pd.read_csv(data_dir / "item_master.csv")
+    ct = pd.read_csv(data_dir / "container_spec.csv")
+    opt1 = RunOptions(seed=1, population_size=30, generations=40)
+    opt2 = RunOptions(seed=1, population_size=30, generations=40)
+    res1 = run_pipeline(pl, im, ct, options=opt1)
+    res2 = run_pipeline(pl, im, ct, options=opt2)
+    boxes1 = sorted([(b.box_id, b.x, b.y, b.z, b.posture) for b in res1.result.placed_boxes])
+    boxes2 = sorted([(b.box_id, b.x, b.y, b.z, b.posture) for b in res2.result.placed_boxes])
+    assert boxes1 == boxes2

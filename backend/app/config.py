@@ -67,9 +67,10 @@ class Settings(BaseSettings):
     CONTAINER_WALL_CLEARANCE_CM: float = 0.0  # Clearance maintained between 4 container walls and cargo
     TOLERANCE_GAP_CM: float = 0.0  # Inter-carton gap (0.0 cm: cartons packed flush with zero spacing)
     # Post-compaction remove-and-reinsert repair (app/solver/repair.py). Monotone: only accepted
-    # when the total placed volume strictly increases. Costs up to REPAIR_BUDGET_S per round.
+    # when the total placed volume strictly increases. Work is bounded by a trial COUNT (never by
+    # wall-clock time) so results stay reproducible; roughly 50 trials/s on a ~300-carton instance.
     REPAIR_ENABLED: bool = True
-    REPAIR_BUDGET_S: float = 30.0
+    REPAIR_MAX_TRIALS: int = 1200  # tower trials per round, per run
     REPAIR_MAX_TOWER: int = 8
     REPAIR_MAX_CANDIDATES: int = 200
     REPAIR_ROUNDS: int = 3
