@@ -180,7 +180,7 @@ npx vitest
 ## Architecture & Solver Pipeline
 
 ### Solver Pipeline
-1. **Parse & Join**: Read packing list, resolve attributes against item master, expand carton quantities into individual items, inflate X/Y dimensions by `TOLERANCE_GAP_CM`, and detect shipment type (FCL vs LCL).
+1. **Parse & Join**: Read packing list, resolve attributes against item master, expand carton quantities into individual items, inflate X/Y dimensions by `TOLERANCE_GAP_CM` (inter-carton gap, default 0.0 cm), reserve `CONTAINER_WALL_CLEARANCE_CM` (perimeter clearance between cargo and the 4 container walls, default 0.0 cm), and detect shipment type (FCL vs LCL).
 2. **Initial Sort**: Order boxes by customer delivery sequence (LCL), volume descending, and weight descending.
 3. **Block Generation**: Combine identical and similar cartons into composite blocks capped at `MAX_BLOCK_FRACTION` (0.2 for search, 0.4 for reporting) to prevent rigid walls and keep search space flexible.
 4. **Genetic Algorithm**: Evolve posture assignments across blocks and boxes; decode placements via the **Improved Placeable Point Strategy** with corner-first seeding and contact-ratio scoring.
@@ -191,7 +191,7 @@ npx vitest
 ### Understanding Fill Rate: GA Search Basis vs. Reported Physical Metric
 
 It is critical to distinguish between the two volume figures used in the system:
-- **GA Search Fitness Volume (`fitness.py`)**: The genetic algorithm computes placed volume using **inflated box dimensions** (`actual + TOLERANCE_GAP_CM` on length and width). This reflects the reserved space including physical clearance margins inside the container.
+- **GA Search Fitness Volume (`fitness.py`)**: The genetic algorithm computes placed volume using **inflated box dimensions** (`actual + TOLERANCE_GAP_CM` on length and width). When `TOLERANCE_GAP_CM > 0`, this reflects the reserved space between cartons inside the container.
 - **Displayed Fill Rate (`output.py`)**: The metric displayed on the UI and stored in the database measures the **true physical volume of placed cartons** divided by the total container internal volume:
   $$\text{fill\_rate} = \frac{\sum (\text{actual\_length} \times \text{actual\_width} \times \text{actual\_height})}{\text{container\_internal\_volume}}$$
   Because the inflated search footprint reserves space around every box, the GA internal fitness will show a volume percentage slightly higher (typically 3–4 percentage points) than the final reported physical fill rate.
@@ -207,7 +207,7 @@ It is critical to distinguish between the two volume figures used in the system:
    - **Physical Support Ratio**: At least `SUPPORT_RATIO` (0.6, allowing up to 40% overhang) of the base area must be supported by boxes directly underneath.
    - **Weight Hierarchy**: Lighter cartons cannot support heavier cartons ($w_{\text{candidate}} \le w_{\text{supporting}}$).
 5. **Center of Gravity (CoG)**: Overall load center of mass must lie within tolerance bands ($\pm 5\%$ length/width, $+10\%$ height).
-6. **Tolerance Gap**: 2.0 cm horizontal clearance baked into box dimensions at expansion.
+6. **Tolerance Gap & Wall Clearance**: `TOLERANCE_GAP_CM` (default 0.0 cm) defines horizontal clearance between cartons; `CONTAINER_WALL_CLEARANCE_CM` (default 0.0 cm) reserves space between cargo and the container perimeter walls.
 7. **LIFO Delivery Order (LCL)**: Cargo for earlier delivery stops cannot be blocked by cargo for later delivery stops.
 
 ---
@@ -252,7 +252,7 @@ All endpoints are prefixed with `/api` (configured in `Settings.API_V1_PREFIX`):
 - **Landing Page (Run Wizard)**:
   - **Step 1: Packing List**: Select from saved packing lists or upload/paste CSV; shows instant resolved item count, volume, weight, and FCL/LCL badge.
   - **Step 2: Container**: Select from container specifications (e.g. 40HC, 20GP) or create a custom container.
-  - **Step 3: Run Options**: Collapsible configuration defaulting to `population_size=30`, `generations=40`, `tolerance_gap_cm=2.0`.
+  - **Step 3: Run Options**: Collapsible configuration defaulting to `population_size=30`, `generations=40`, `tolerance_gap_cm=0.0` (UI exposes only carton gap today; container wall clearance is configured via backend settings).
 - **In-Progress Execution**:
   - Transition in-place to real-time status tracker (indeterminate parsing/blocks phase, followed by GA generation progress bar via HTTP polling; WebSocket upgrade path available).
 - **Loading Plan Viewer**:
@@ -280,7 +280,8 @@ Key parameters defined in `backend/app/config.py`:
 |---|---|---|---|
 | `POPULATION_SIZE` | `60` | `30` | Number of individuals in GA population |
 | `GENERATIONS` | `100` | `40` | Maximum generations before termination |
-| `TOLERANCE_GAP_CM` | `2.0` | `2.0` | Horizontal spacing clearance between boxes and walls (applied on X, Y axes) |
+| `TOLERANCE_GAP_CM` | `0.0` | `0.0` | Horizontal clearance spacing between cartons (applied on X, Y axes) |
+| `CONTAINER_WALL_CLEARANCE_CM` | `0.0` | — | Perimeter clearance maintained between cargo and all 4 container walls (UI exposes only carton gap today) |
 | `EP_CANDIDATE_LIMIT` | `100` | — | Max extreme points evaluated per lot step in group decoder |
 | `GA_WORKERS` | `0` | — | Worker processes for GA evaluation (0=auto: 2 standalone, 1 nested) |
 | `SUPPORT_RATIO` | `0.6` | — | Minimum base area support fraction required to stack |
