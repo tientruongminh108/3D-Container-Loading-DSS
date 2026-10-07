@@ -110,5 +110,5 @@ def test_validator_detects_top_corner_intrusion(container_dims):
         max_weight_kg=28000.0,
     )
     assert not report.is_valid
-    assert report.violations_by_type.get("bounds", 0) > 0
+    assert report.violations_by_type.get("corner_clearance", 0) > 0
     assert any("top-corner obstruction cuboid" in msg for msg in report.error_messages)

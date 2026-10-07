@@ -41,6 +41,7 @@ def validate_solution(
         "duplicate_id": 0,
         "orientation": 0,
         "bounds": 0,
+        "corner_clearance": 0,
         "overlap": 0,
         "weight_capacity": 0,
         "support_ratio": 0,
@@ -76,7 +77,7 @@ def validate_solution(
             violations["orientation"] += 1
             messages.append(f"Box {b.box_id} This_Way_Up=True but placed in posture {b.posture}")
 
-    # 3. Container Bounds
+    # 3. Container Bounds & Corner Clearance
     cL, cW, cH = container_dims.length, container_dims.width, container_dims.height
     for b in placed_boxes:
         bx2 = b.x + b.actual_length
@@ -98,7 +99,7 @@ def validate_solution(
         else:
             bbox = BoundingBox(b.x, b.y, b.z, bx2, by2, bz2)
             if not check_corner_clearance(bbox, container_dims):
-                violations["bounds"] += 1
+                violations["corner_clearance"] += 1
                 messages.append(
                     f"Box {b.box_id} intersects top-corner obstruction cuboid: "
                     f"[{b.x:.2f}, {bx2:.2f}]x[{b.y:.2f}, {by2:.2f}]x[{b.z:.2f}, {bz2:.2f}]"

@@ -4,7 +4,9 @@ from functools import lru_cache
 
 
 
-# Top-corner casting obstruction dimensions (ISO 1161 approximation: 17.8 x 16.2 x 11.8 cm)
+# Top-corner casting obstruction dimensions (currently set to 11.0 x 10.0 x 11.8 cm for
+# internal casting protrusion clearance; ISO 1161 standard exterior approximation is 17.8 x 16.2 x 11.8 cm).
+# TODO(owner): confirm 11.0/10.0 vs ISO 17.8/16.2
 CORNER_BLOCK_X_CM: float = 11.0
 CORNER_BLOCK_Y_CM: float = 10.0
 CORNER_BLOCK_Z_CM: float = 11.8

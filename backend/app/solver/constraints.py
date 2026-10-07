@@ -76,7 +76,7 @@ def check_corner_clearance(
     container_dims: Dimensions,
 ) -> bool:
     """Check whether a candidate BoundingBox avoids the 4 top-corner obstruction
-    cuboids (ISO 1161 corner casting approximation: 17.8 x 16.2 x 11.8 cm).
+    cuboids defined in settings (CORNER_BLOCK_X_CM x CORNER_BLOCK_Y_CM x CORNER_BLOCK_Z_CM).
 
     The 4 top corners are:
     - Rear-left-top:  x in [0, X_CM],       y in [0, Y_CM],       z in [H - Z_CM, H]
@@ -85,13 +85,13 @@ def check_corner_clearance(
     - Door-right-top: x in [L - X_CM, L],   y in [W - Y_CM, W],   z in [H - Z_CM, H]
     """
     settings = get_settings()
-    cz = getattr(settings, "CORNER_BLOCK_Z_CM", 11.8)
+    cz = settings.CORNER_BLOCK_Z_CM
     # Early-exit: most candidates are below the top corner obstruction zone
     if candidate.max_z <= container_dims.height - cz:
         return True
 
-    cx = getattr(settings, "CORNER_BLOCK_X_CM", 17.8)
-    cy = getattr(settings, "CORNER_BLOCK_Y_CM", 16.2)
+    cx = settings.CORNER_BLOCK_X_CM
+    cy = settings.CORNER_BLOCK_Y_CM
     cL = container_dims.length
     cW = container_dims.width
 
