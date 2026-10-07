@@ -346,6 +346,9 @@ export function LoadingPlanViewer({ result, onNewRun }: LoadingPlanViewerProps) 
         const usedCbm = metrics.used_volume_cbm ?? (containerVolCbm * metrics.fill_rate)
         const unusedCbm = metrics.unused_volume_cbm ?? Math.max(0, containerVolCbm - usedCbm)
         const unusedPercent = Math.max(0, (1 - metrics.fill_rate) * 100).toFixed(1)
+        const placedPercent = metrics.total_cartons > 0
+          ? Number(((metrics.placed_count / metrics.total_cartons) * 100).toFixed(1))
+          : 0
         
         let planningTime = '0.45'
         if (result.planning_time_seconds !== undefined && result.planning_time_seconds !== null) {
@@ -405,7 +408,7 @@ export function LoadingPlanViewer({ result, onNewRun }: LoadingPlanViewerProps) 
                 {metrics.placed_count}<span className="stat-unit"> / {metrics.total_cartons}</span>
               </div>
               <div className="text-[11px] text-slate-500 mt-1 font-medium">
-                {currentStep < totalBoxes ? `Step ${currentStep}/${totalBoxes} visible` : '100% placed'}
+                {currentStep < totalBoxes ? `Step ${currentStep}/${totalBoxes} visible` : `${placedPercent}% placed`}
               </div>
             </div>
 
