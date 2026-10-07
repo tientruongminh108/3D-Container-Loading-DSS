@@ -723,7 +723,7 @@ class TestOutputCoordinateIntegrity:
         data_dir = repo_root / "data"
 
         container_df = pd.read_csv(data_dir / "container_spec.csv")
-        item_master_df = pd.read_csv(data_dir / "item_master.csv")
+        item_master_df = pd.read_csv(data_dir / "item_master_01.csv")
         packing_list_df = pd.read_csv(data_dir / "packing_list_01.csv")
 
         options = RunOptions(population_size=10, generations=10, tolerance_gap_cm=0.0)
@@ -770,4 +770,4 @@ class TestOutputCoordinateIntegrity:
 
         ordered = sort_boxes_physically_stable([top, middle, base])
         step_ids = [b.box_id for b in ordered]
-        assert step_ids == ["BASE_1", "MID_1", "TOP_1"], f"Expected base to top loading order, got {step_ids}"
+        assert step_ids == ["BASE_1", "MID_1", "TOP_1"], f"Expected base to top loading order, got {step_ids}"

@@ -16,7 +16,7 @@ from app.solver.placement import decode_chromosome
 def fcl_dataset():
     data_dir = Path(__file__).parent.parent.parent / "data"
     pl = pd.read_csv(data_dir / "packing_list.csv")
-    im = pd.read_csv(data_dir / "item_master.csv")
+    im = pd.read_csv(data_dir / "item_master_01.csv")
     ct = pd.read_csv(data_dir / "container_spec.csv")
     boxes, container_spec, preview, shipment_type = parse_and_join(pl, im, ct)
     sorted_boxes = initial_sort(boxes, shipment_type.value)
