@@ -8,7 +8,7 @@ from app.solver.block_generation import Block
 from app.solver.geometry import Dimensions, Posture
 from app.solver.placement import decode_chromosome
 from app.solver.fitness import calculate_fitness, FitnessResult
-from app.solver.sa import simulated_annealing, run_simulated_annealing
+from app.solver.sa import run_simulated_annealing
 
 
 def _customer_group_bounds(units: List[Box]) -> List[Tuple[int, int]]:

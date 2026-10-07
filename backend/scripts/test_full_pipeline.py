@@ -76,7 +76,7 @@ def run_pipeline_for_dataset(name: str, packing_list_df: pd.DataFrame, item_mast
 
 def main():
     parser = argparse.ArgumentParser(description="Run 3D-CL-DSS pipeline")
-    parser.add_argument("--mode", choices=["fcl", "lcl", "both", "lcl_small"], default="both", help="Shipment mode to test")
+    parser.add_argument("--mode", choices=["fcl", "lcl", "both"], default="both", help="Shipment mode to test")
     parser.add_argument("--generations", type=int, default=100, help="Number of GA generations (default: 100)")
     parser.add_argument("--pop-size", type=int, default=60, help="Population size (default: 60)")
     args = parser.parse_args()
@@ -143,12 +143,6 @@ def main():
         custs = ['CUST-A', 'CUST-B', 'CUST-C']
         pl_lcl['Customer_Code'] = [custs[i % 3] for i in range(len(pl_lcl))]
         run_with_options("LCL 3-Customer (derived from data/)", pl_lcl)
-
-    if args.mode == "lcl_small":
-        pl_lcl_small = pd.read_csv(b_data_dir / "packing_list_samples" / "lcl_sample.csv")
-        im_lcl_small = pd.read_csv(b_data_dir / "item_master.csv")
-        ct_lcl_small = pd.read_csv(b_data_dir / "container_spec.csv")
-        run_with_options("LCL Small", pl_lcl_small, im=im_lcl_small, ct=ct_lcl_small)
 
 
 if __name__ == "__main__":

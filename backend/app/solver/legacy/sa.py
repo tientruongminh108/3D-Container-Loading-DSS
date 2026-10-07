@@ -33,6 +33,7 @@ def run_simulated_annealing(
 
     # Auto-tune initial temperature from fitness delta standard deviation
     if auto_tune:
+        from app.solver.ga import evaluate_individual
         deltas = []
         for _ in range(50):
             neighbor = generate_neighbor(current, boxes_sorted)
