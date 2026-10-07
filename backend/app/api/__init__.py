@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Response
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Dict, Any, Optional, Tuple, Callable
 import pandas as pd
 from io import StringIO
 from datetime import datetime, timezone
@@ -198,12 +198,11 @@ def delete_run(run_id: str, db: Session = Depends(get_db)):
 
 
 # ============================================
-# BULK UPLOAD ENDPOINTS
+# BULK UPLOAD ENDPOINTS & HELPERS
 # ============================================
 
-@router.post("/items/upload-csv", response_model=dict)
-async def upload_items_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """Upload Item Master data from CSV file"""
+async def _read_csv_upload(file: UploadFile) -> pd.DataFrame:
+    """Validate file extension and decode CSV content into a normalized DataFrame."""
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="File must be a CSV")
     
@@ -213,299 +212,262 @@ async def upload_items_csv(file: UploadFile = File(...), db: Session = Depends(g
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid CSV format: {str(e)}")
     
-    # Normalize column names
     df.columns = df.columns.str.strip().str.lower().str.replace('\ufeff', '').str.replace(' ', '_').str.replace('-', '_')
-    
-    # Map possible column names
-    col_mapping = {
-        'item_id': ['item_id', 'item_code', 'itemcode', 'sku', 'id', 'code'],
-        'description': ['description', 'name', 'item_name', 'itemname', 'desc'],
-        'length_cm': ['length_cm', 'length', 'l', 'len', 'length(cm)', 'length_(cm)'],
-        'width_cm': ['width_cm', 'width', 'w', 'wid', 'width(cm)', 'width_(cm)'],
-        'height_cm': ['height_cm', 'height', 'h', 'hei', 'height(cm)', 'height_(cm)'],
-        'weight_kg': ['weight_kg', 'weight', 'kg', 'wt', 'weight(kg)', 'weight_(kg)'],
-        'this_way_up': ['this_way_up', 'thiswayup', 'orientation', 'upright'],
-    }
-    
-    def get_col(df_cols, possible_names):
-        for name in possible_names:
-            if name in df_cols:
-                return name
-        return None
-    
+    return df
+
+
+def _map_columns(df: pd.DataFrame, aliases: Dict[str, List[str]], required: List[str]) -> Dict[str, str]:
+    """Map DataFrame column names to standard names using aliases and check required columns."""
+    cols = df.columns.tolist()
     mapped_cols = {}
-    for standard_name, possible_names in col_mapping.items():
-        col = get_col(df.columns.tolist(), possible_names)
-        if col:
-            mapped_cols[standard_name] = col
-    
-    # Check required columns
-    required = ['item_id', 'description', 'length_cm', 'width_cm', 'height_cm', 'weight_kg']
+    for standard_name, possible_names in aliases.items():
+        for name in possible_names:
+            if name in cols:
+                mapped_cols[standard_name] = name
+                break
     missing = [r for r in required if r not in mapped_cols]
     if missing:
-        raise HTTPException(status_code=400, detail=f"Missing required columns: {missing}. Found columns: {list(df.columns)}")
-    
-    df = df.dropna(how='all')
-    created = 0
-    updated = 0
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing required columns: {missing}. Found columns: {list(df.columns)}"
+        )
+    return mapped_cols
+
+
+def _process_rows(
+    df: pd.DataFrame,
+    process_row_fn: Callable[[int, pd.Series], Any]
+) -> Tuple[List[Any], List[str], int]:
+    """Iterate through non-empty rows of df, executing process_row_fn and catching per-row exceptions.
+
+    Returns (results, errors, total_rows).
+    """
+    clean_df = df.dropna(how='all')
+    results = []
     errors = []
-    
-    for idx, row in df.iterrows():
+    for idx, row in clean_df.iterrows():
         try:
-            raw_item_id = row[mapped_cols['item_id']]
-            if pd.isna(raw_item_id) or not str(raw_item_id).strip():
-                continue
-            item_id_str = str(raw_item_id).strip()
-            
-            raw_desc = row[mapped_cols['description']]
-            desc_str = str(raw_desc).strip() if pd.notna(raw_desc) and str(raw_desc).strip() else item_id_str
-            
-            item_data = {
-                'item_id': item_id_str,
-                'description': desc_str,
-                'length_cm': float(row[mapped_cols['length_cm']]),
-                'width_cm': float(row[mapped_cols['width_cm']]),
-                'height_cm': float(row[mapped_cols['height_cm']]),
-                'weight_kg': float(row[mapped_cols['weight_kg']]),
-            }
-            
-            # Optional fields
-            if 'this_way_up' in mapped_cols:
-                val = row[mapped_cols['this_way_up']]
-                if pd.notna(val) and str(val).strip():
-                    item_data['this_way_up'] = str(val).strip().lower() in ['true', 'yes', '1', 'y', 't']
-            
-            # Validate required fields
-            if not item_data['item_id'] or not item_data['description']:
-                errors.append(f"Row {idx + 2}: Missing required fields")
-                continue
-            if item_data['length_cm'] <= 0 or item_data['width_cm'] <= 0 or item_data['height_cm'] <= 0 or item_data['weight_kg'] <= 0:
-                errors.append(f"Row {idx + 2}: Dimensions and weight must be positive")
-                continue
-            
-            # Check if item exists
-            existing = db.query(DBItem).filter(DBItem.item_id == item_data['item_id']).first()
-            if existing:
-                # Update existing
-                for key, value in item_data.items():
-                    setattr(existing, key, value)
-                existing.updated_at = datetime.now(timezone.utc)
-                updated += 1
-            else:
-                # Create new
-                db_item = DBItem(**item_data)
-                db.add(db_item)
-                created += 1
-        
+            res = process_row_fn(idx, row)
+            if res is not None:
+                results.append(res)
         except Exception as e:
             errors.append(f"Row {idx + 2}: {str(e)}")
-    
+    return results, errors, len(clean_df)
+
+
+ITEM_COL_ALIASES = {
+    'item_id': ['item_id', 'item_code', 'itemcode', 'sku', 'id', 'code'],
+    'description': ['description', 'name', 'item_name', 'itemname', 'desc'],
+    'length_cm': ['length_cm', 'length', 'l', 'len', 'length(cm)', 'length_(cm)'],
+    'width_cm': ['width_cm', 'width', 'w', 'wid', 'width(cm)', 'width_(cm)'],
+    'height_cm': ['height_cm', 'height', 'h', 'hei', 'height(cm)', 'height_(cm)'],
+    'weight_kg': ['weight_kg', 'weight', 'kg', 'wt', 'weight(kg)', 'weight_(kg)'],
+    'this_way_up': ['this_way_up', 'thiswayup', 'orientation', 'upright'],
+}
+
+CONTAINER_COL_ALIASES = {
+    'container_type': ['container_type', 'type', 'container_id', 'containerid', 'name', 'id', 'code'],
+    'internal_length_cm': ['internal_length_cm', 'internal_length', 'length_cm', 'length', 'l', 'len'],
+    'internal_width_cm': ['internal_width_cm', 'internal_width', 'width_cm', 'width', 'w', 'wid'],
+    'internal_height_cm': ['internal_height_cm', 'internal_height', 'height_cm', 'height', 'h', 'hei'],
+    'max_weight_kg': ['max_weight_kg', 'max_weight', 'weight', 'weight_kg', 'kg', 'capacity'],
+}
+
+PACKING_LIST_COL_ALIASES = {
+    'item_id': ['item_id', 'item_code', 'itemcode', 'sku', 'id', 'code'],
+    'po_no': ['po_no', 'po', 'po_number', 'order_no', 'order'],
+    'customer_code': ['customer_code', 'customer', 'client_code', 'client', 'cust'],
+    'description': ['description', 'name', 'item_name', 'itemname', 'desc'],
+    'qty_pcs': ['qty_pcs', 'pieces', 'pcs', 'qty'],
+    'qty_cartons': ['qty_cartons', 'cartons', 'ctns', 'quantity'],
+}
+
+
+def _parse_item_row(idx: int, row: pd.Series, mapped: Dict[str, str]) -> Optional[Dict[str, Any]]:
+    raw_item_id = row[mapped['item_id']]
+    if pd.isna(raw_item_id) or not str(raw_item_id).strip():
+        return None
+    item_id_str = str(raw_item_id).strip()
+
+    raw_desc = row[mapped['description']]
+    desc_str = str(raw_desc).strip() if pd.notna(raw_desc) and str(raw_desc).strip() else item_id_str
+
+    item_data = {
+        'item_id': item_id_str,
+        'description': desc_str,
+        'length_cm': float(row[mapped['length_cm']]),
+        'width_cm': float(row[mapped['width_cm']]),
+        'height_cm': float(row[mapped['height_cm']]),
+        'weight_kg': float(row[mapped['weight_kg']]),
+    }
+
+    if 'this_way_up' in mapped:
+        val = row[mapped['this_way_up']]
+        if pd.notna(val) and str(val).strip():
+            item_data['this_way_up'] = str(val).strip().lower() in ['true', 'yes', '1', 'y', 't']
+
+    if not item_data['item_id'] or not item_data['description']:
+        raise ValueError("Missing required fields")
+    if item_data['length_cm'] <= 0 or item_data['width_cm'] <= 0 or item_data['height_cm'] <= 0 or item_data['weight_kg'] <= 0:
+        raise ValueError("Dimensions and weight must be positive")
+
+    return item_data
+
+
+def _parse_container_row(idx: int, row: pd.Series, mapped: Dict[str, str]) -> Optional[Dict[str, Any]]:
+    raw_c_type = row[mapped['container_type']]
+    if pd.isna(raw_c_type) or not str(raw_c_type).strip():
+        return None
+    c_type_str = str(raw_c_type).strip()
+
+    container_data = {
+        'container_type': c_type_str,
+        'internal_length_cm': float(row[mapped['internal_length_cm']]),
+        'internal_width_cm': float(row[mapped['internal_width_cm']]),
+        'internal_height_cm': float(row[mapped['internal_height_cm']]),
+        'max_weight_kg': float(row[mapped['max_weight_kg']]),
+    }
+
+    if not container_data['container_type']:
+        raise ValueError("Missing container type")
+    if container_data['internal_length_cm'] <= 0 or container_data['internal_width_cm'] <= 0 or container_data['internal_height_cm'] <= 0 or container_data['max_weight_kg'] <= 0:
+        raise ValueError("Dimensions and weight must be positive")
+
+    return container_data
+
+
+def _parse_packing_list_row(idx: int, row: pd.Series, mapped: Dict[str, str]) -> Optional[Dict[str, Any]]:
+    raw_item_id = row[mapped['item_id']]
+    if pd.isna(raw_item_id) or not str(raw_item_id).strip():
+        return None
+    raw_po = row[mapped['po_no']]
+    if pd.isna(raw_po) or not str(raw_po).strip():
+        return None
+    raw_qty = row[mapped['qty_cartons']]
+    if pd.isna(raw_qty) or str(raw_qty).strip() == '':
+        return None
+
+    item_id = str(raw_item_id).strip()
+    po_no = str(raw_po).strip()
+    qty_cartons = int(float(raw_qty))
+
+    if not item_id or not po_no or qty_cartons <= 0:
+        raise ValueError("Missing or invalid required fields")
+
+    row_data = {
+        'item_id': item_id,
+        'po_no': po_no,
+        'qty_cartons': qty_cartons,
+    }
+
+    if 'customer_code' in mapped:
+        val = row[mapped['customer_code']]
+        if pd.notna(val) and str(val).strip():
+            row_data['customer_code'] = str(val)
+
+    if 'description' in mapped:
+        val = row[mapped['description']]
+        if pd.notna(val) and str(val).strip():
+            row_data['description'] = str(val)
+
+    if 'qty_pcs' in mapped:
+        val = row[mapped['qty_pcs']]
+        if pd.notna(val):
+            row_data['qty_pcs'] = int(val)
+        else:
+            row_data['qty_pcs'] = qty_cartons
+    else:
+        row_data['qty_pcs'] = qty_cartons
+
+    return row_data
+
+
+@router.post("/items/upload-csv", response_model=dict)
+async def upload_items_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Upload Item Master data from CSV file"""
+    df = await _read_csv_upload(file)
+    mapped_cols = _map_columns(
+        df,
+        ITEM_COL_ALIASES,
+        ['item_id', 'description', 'length_cm', 'width_cm', 'height_cm', 'weight_kg'],
+    )
+
+    def process_item(idx: int, row: pd.Series):
+        item_data = _parse_item_row(idx, row, mapped_cols)
+        if item_data is None:
+            return None
+        existing = db.query(DBItem).filter(DBItem.item_id == item_data['item_id']).first()
+        if existing:
+            for key, value in item_data.items():
+                setattr(existing, key, value)
+            existing.updated_at = datetime.now(timezone.utc)
+            return "updated"
+        else:
+            db_item = DBItem(**item_data)
+            db.add(db_item)
+            return "created"
+
+    results, errors, total_rows = _process_rows(df, process_item)
     db.commit()
-    
+
     return {
         "success": True,
-        "created": created,
-        "updated": updated,
+        "created": results.count("created"),
+        "updated": results.count("updated"),
         "errors": errors,
-        "total_rows": len(df)
+        "total_rows": total_rows,
     }
 
 
 @router.post("/containers/upload-csv", response_model=dict)
 async def upload_containers_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Upload Container Spec data from CSV file"""
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="File must be a CSV")
-    
-    content = await file.read()
-    try:
-        df = pd.read_csv(StringIO(content.decode('utf-8')))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid CSV format: {str(e)}")
-    
-    # Normalize column names
-    df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_').str.replace('-', '_')
-    
-    # Map possible column names
-    col_mapping = {
-        'container_type': ['container_type', 'container_type', 'type', 'container_id', 'containerid', 'name', 'id', 'code'],
-        'internal_length_cm': ['internal_length_cm', 'internal_length', 'length_cm', 'length', 'l', 'len'],
-        'internal_width_cm': ['internal_width_cm', 'internal_width', 'width_cm', 'width', 'w', 'wid'],
-        'internal_height_cm': ['internal_height_cm', 'internal_height', 'height_cm', 'height', 'h', 'hei'],
-        'max_weight_kg': ['max_weight_kg', 'max_weight', 'weight', 'weight_kg', 'kg', 'capacity'],
-    }
-    
-    def get_col(df_cols, possible_names):
-        for name in possible_names:
-            if name in df_cols:
-                return name
-        return None
-    
-    mapped_cols = {}
-    for standard_name, possible_names in col_mapping.items():
-        col = get_col(df.columns.tolist(), possible_names)
-        if col:
-            mapped_cols[standard_name] = col
-    
-    # Check required columns
-    required = ['container_type', 'internal_length_cm', 'internal_width_cm', 'internal_height_cm', 'max_weight_kg']
-    missing = [r for r in required if r not in mapped_cols]
-    if missing:
-        raise HTTPException(status_code=400, detail=f"Missing required columns: {missing}. Found columns: {list(df.columns)}")
-    
-    df = df.dropna(how='all')
-    created = 0
-    updated = 0
-    errors = []
-    
-    for idx, row in df.iterrows():
-        try:
-            raw_c_type = row[mapped_cols['container_type']]
-            if pd.isna(raw_c_type) or not str(raw_c_type).strip():
-                continue
-            c_type_str = str(raw_c_type).strip()
+    df = await _read_csv_upload(file)
+    mapped_cols = _map_columns(
+        df,
+        CONTAINER_COL_ALIASES,
+        ['container_type', 'internal_length_cm', 'internal_width_cm', 'internal_height_cm', 'max_weight_kg'],
+    )
 
-            container_data = {
-                'container_type': c_type_str,
-                'internal_length_cm': float(row[mapped_cols['internal_length_cm']]),
-                'internal_width_cm': float(row[mapped_cols['internal_width_cm']]),
-                'internal_height_cm': float(row[mapped_cols['internal_height_cm']]),
-                'max_weight_kg': float(row[mapped_cols['max_weight_kg']]),
-            }
-            
-            # Validate required fields
-            if not container_data['container_type']:
-                errors.append(f"Row {idx + 2}: Missing container type")
-                continue
-            if container_data['internal_length_cm'] <= 0 or container_data['internal_width_cm'] <= 0 or container_data['internal_height_cm'] <= 0 or container_data['max_weight_kg'] <= 0:
-                errors.append(f"Row {idx + 2}: Dimensions and weight must be positive")
-                continue
-            
-            # Check if container exists
-            existing = db.query(DBContainer).filter(DBContainer.container_type == container_data['container_type']).first()
-            if existing:
-                # Update existing
-                for key, value in container_data.items():
-                    setattr(existing, key, value)
-                existing.updated_at = datetime.now(timezone.utc)
-                updated += 1
-            else:
-                # Create new
-                db_container = DBContainer(**container_data)
-                db.add(db_container)
-                created += 1
-        
-        except Exception as e:
-            errors.append(f"Row {idx + 2}: {str(e)}")
-    
+    def process_container(idx: int, row: pd.Series):
+        container_data = _parse_container_row(idx, row, mapped_cols)
+        if container_data is None:
+            return None
+        existing = db.query(DBContainer).filter(DBContainer.container_type == container_data['container_type']).first()
+        if existing:
+            for key, value in container_data.items():
+                setattr(existing, key, value)
+            existing.updated_at = datetime.now(timezone.utc)
+            return "updated"
+        else:
+            db_container = DBContainer(**container_data)
+            db.add(db_container)
+            return "created"
+
+    results, errors, total_rows = _process_rows(df, process_container)
     db.commit()
-    
+
     return {
         "success": True,
-        "created": created,
-        "updated": updated,
+        "created": results.count("created"),
+        "updated": results.count("updated"),
         "errors": errors,
-        "total_rows": len(df)
+        "total_rows": total_rows,
     }
 
 
 @router.post("/packing-lists/upload-csv", response_model=dict)
 async def upload_packing_list_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Upload Packing List data from CSV file - validates and returns preview"""
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="File must be a CSV")
-    
-    content = await file.read()
-    try:
-        df = pd.read_csv(StringIO(content.decode('utf-8')))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid CSV format: {str(e)}")
-    
-    # Normalize column names
-    df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_').str.replace('-', '_')
-    
-    # Map possible column names
-    col_mapping = {
-        'item_id': ['item_id', 'item_code', 'itemcode', 'sku', 'id', 'code'],
-        'po_no': ['po_no', 'po_no', 'po', 'po_number', 'order_no', 'order'],
-        'customer_code': ['customer_code', 'customer_code', 'customer', 'client_code', 'client', 'cust'],
-        'description': ['description', 'name', 'item_name', 'itemname', 'desc'],
-        'qty_pcs': ['qty_pcs', 'qty_pcs', 'pieces', 'pcs', 'qty'],
-        'qty_cartons': ['qty_cartons', 'qty_cartons', 'cartons', 'ctns', 'quantity'],
-    }
-    
-    def get_col(df_cols, possible_names):
-        for name in possible_names:
-            if name in df_cols:
-                return name
-        return None
-    
-    mapped_cols = {}
-    for standard_name, possible_names in col_mapping.items():
-        col = get_col(df.columns.tolist(), possible_names)
-        if col:
-            mapped_cols[standard_name] = col
-    
-    # Check required columns
-    required = ['item_id', 'po_no', 'qty_cartons']
-    missing = [r for r in required if r not in mapped_cols]
-    if missing:
-        raise HTTPException(status_code=400, detail=f"Missing required columns: {missing}. Found columns: {list(df.columns)}")
-    
-    df = df.dropna(how='all')
-    rows = []
-    errors = []
-    
-    for idx, row in df.iterrows():
-        try:
-            raw_item_id = row[mapped_cols['item_id']]
-            if pd.isna(raw_item_id) or not str(raw_item_id).strip():
-                continue
-            raw_po = row[mapped_cols['po_no']]
-            if pd.isna(raw_po) or not str(raw_po).strip():
-                continue
-            raw_qty = row[mapped_cols['qty_cartons']]
-            if pd.isna(raw_qty) or str(raw_qty).strip() == '':
-                continue
-            
-            item_id = str(raw_item_id).strip()
-            po_no = str(raw_po).strip()
-            qty_cartons = int(float(raw_qty))
-            
-            if not item_id or not po_no or qty_cartons <= 0:
-                errors.append(f"Row {idx + 2}: Missing or invalid required fields")
-                continue
-            
-            row_data = {
-                'item_id': item_id,
-                'po_no': po_no,
-                'qty_cartons': qty_cartons,
-            }
-            
-            if 'customer_code' in mapped_cols:
-                val = row[mapped_cols['customer_code']]
-                if pd.notna(val) and str(val).strip():
-                    row_data['customer_code'] = str(val)
-            
-            if 'description' in mapped_cols:
-                val = row[mapped_cols['description']]
-                if pd.notna(val) and str(val).strip():
-                    row_data['description'] = str(val)
-            
-            if 'qty_pcs' in mapped_cols:
-                val = row[mapped_cols['qty_pcs']]
-                if pd.notna(val):
-                    row_data['qty_pcs'] = int(val)
-                else:
-                    row_data['qty_pcs'] = qty_cartons
-            else:
-                row_data['qty_pcs'] = qty_cartons
-            
-            rows.append(row_data)
-        
-        except Exception as e:
-            errors.append(f"Row {idx + 2}: {str(e)}")
-    
+    df = await _read_csv_upload(file)
+    mapped_cols = _map_columns(
+        df,
+        PACKING_LIST_COL_ALIASES,
+        ['item_id', 'po_no', 'qty_cartons'],
+    )
+
+    rows, errors, _ = _process_rows(df, lambda idx, row: _parse_packing_list_row(idx, row, mapped_cols))
+
     # Validate against existing items and containers
     if rows:
         try:
@@ -579,100 +541,15 @@ def delete_packing_list(packing_list_id: str, db: Session = Depends(get_db)):
 @router.post("/packing-lists/upload-csv-and-save", response_model=dict)
 async def upload_and_save_packing_list_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Upload Packing List CSV, validate, and save to database"""
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="File must be a CSV")
-    
-    content = await file.read()
-    try:
-        df = pd.read_csv(StringIO(content.decode('utf-8')))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid CSV format: {str(e)}")
-    
-    # Normalize column names
-    df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_').str.replace('-', '_')
-    
-    # Map possible column names
-    col_mapping = {
-        'item_id': ['item_id', 'item_code', 'itemcode', 'sku', 'id', 'code'],
-        'po_no': ['po_no', 'po_no', 'po', 'po_number', 'order_no', 'order'],
-        'customer_code': ['customer_code', 'customer_code', 'customer', 'client_code', 'client', 'cust'],
-        'description': ['description', 'name', 'item_name', 'itemname', 'desc'],
-        'qty_pcs': ['qty_pcs', 'qty_pcs', 'pieces', 'pcs', 'qty'],
-        'qty_cartons': ['qty_cartons', 'qty_cartons', 'cartons', 'ctns', 'quantity'],
-    }
-    
-    def get_col(df_cols, possible_names):
-        for name in possible_names:
-            if name in df_cols:
-                return name
-        return None
-    
-    mapped_cols = {}
-    for standard_name, possible_names in col_mapping.items():
-        col = get_col(df.columns.tolist(), possible_names)
-        if col:
-            mapped_cols[standard_name] = col
-    
-    # Check required columns
-    required = ['item_id', 'po_no', 'qty_cartons']
-    missing = [r for r in required if r not in mapped_cols]
-    if missing:
-        raise HTTPException(status_code=400, detail=f"Missing required columns: {missing}. Found columns: {list(df.columns)}")
-    
-    df = df.dropna(how='all')
-    rows = []
-    errors = []
-    
-    for idx, row in df.iterrows():
-        try:
-            raw_item_id = row[mapped_cols['item_id']]
-            if pd.isna(raw_item_id) or not str(raw_item_id).strip():
-                continue
-            raw_po = row[mapped_cols['po_no']]
-            if pd.isna(raw_po) or not str(raw_po).strip():
-                continue
-            raw_qty = row[mapped_cols['qty_cartons']]
-            if pd.isna(raw_qty) or str(raw_qty).strip() == '':
-                continue
-            
-            item_id = str(raw_item_id).strip()
-            po_no = str(raw_po).strip()
-            qty_cartons = int(float(raw_qty))
-            
-            if not item_id or not po_no or qty_cartons <= 0:
-                errors.append(f"Row {idx + 2}: Missing or invalid required fields")
-                continue
-            
-            row_data = {
-                'item_id': item_id,
-                'po_no': po_no,
-                'qty_cartons': qty_cartons,
-            }
-            
-            if 'customer_code' in mapped_cols:
-                val = row[mapped_cols['customer_code']]
-                if pd.notna(val) and str(val).strip():
-                    row_data['customer_code'] = str(val)
-            
-            if 'description' in mapped_cols:
-                val = row[mapped_cols['description']]
-                if pd.notna(val) and str(val).strip():
-                    row_data['description'] = str(val)
-            
-            if 'qty_pcs' in mapped_cols:
-                val = row[mapped_cols['qty_pcs']]
-                if pd.notna(val):
-                    row_data['qty_pcs'] = int(val)
-                else:
-                    row_data['qty_pcs'] = qty_cartons
-            else:
-                row_data['qty_pcs'] = qty_cartons
-            
-            rows.append(row_data)
-        
-        except Exception as e:
-            errors.append(f"Row {idx + 2}: {str(e)}")
-    
+    df = await _read_csv_upload(file)
+    mapped_cols = _map_columns(
+        df,
+        PACKING_LIST_COL_ALIASES,
+        ['item_id', 'po_no', 'qty_cartons'],
+    )
+
+    rows, errors, _ = _process_rows(df, lambda idx, row: _parse_packing_list_row(idx, row, mapped_cols))
+
     # Validate against existing items and containers
     if rows:
         try:
