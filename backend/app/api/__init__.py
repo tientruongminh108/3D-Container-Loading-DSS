@@ -9,14 +9,13 @@ from app.core.database import get_db
 from app.core.models import (
     Item, ItemCreate, ItemUpdate,
     Container, ContainerCreate, ContainerUpdate,
-    PackingListUpload, PackingListPreview, PackingListRow,
-    RunCreate, RunCreateQuick, RunOptions,
-    RunResult, RunSummary, ValidationResponse,
+    PackingListUpload, PackingListRow,
+    RunCreate, RunCreateQuick, RunResult, RunSummary, ValidationResponse,
     PackingListCreate, PackingListUpdate, PackingList, PackingListSummary,
 )
 from app.core.exceptions import DSSException
 from app.services import ItemService, ContainerService, RunService, PackingListService
-from app.core.database import Item as DBItem, Container as DBContainer, PackingList as DBPackingList
+from app.core.database import Item as DBItem, Container as DBContainer
 
 router = APIRouter()
 
@@ -247,7 +246,6 @@ async def upload_items_csv(file: UploadFile = File(...), db: Session = Depends(g
         raise HTTPException(status_code=400, detail=f"Missing required columns: {missing}. Found columns: {list(df.columns)}")
     
     df = df.dropna(how='all')
-    service = ItemService(db)
     created = 0
     updated = 0
     errors = []
@@ -356,7 +354,6 @@ async def upload_containers_csv(file: UploadFile = File(...), db: Session = Depe
         raise HTTPException(status_code=400, detail=f"Missing required columns: {missing}. Found columns: {list(df.columns)}")
     
     df = df.dropna(how='all')
-    service = ContainerService(db)
     created = 0
     updated = 0
     errors = []
@@ -722,6 +719,3 @@ async def upload_and_save_packing_list_csv(file: UploadFile = File(...), db: Ses
         "errors": errors,
         "preview": None
     }
-
-
-from datetime import datetime

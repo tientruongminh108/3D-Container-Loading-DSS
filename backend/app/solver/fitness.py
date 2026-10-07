@@ -2,9 +2,8 @@ from typing import List, Tuple
 from dataclasses import dataclass
 from collections import defaultdict
 from app.config import get_settings
-from app.solver.geometry import BoundingBox, Position, calculate_cog, check_cog_balance, FLOOR_EPSILON, unit_weight
+from app.solver.geometry import BoundingBox, calculate_cog, check_cog_balance, FLOOR_EPSILON, unit_weight
 from app.solver.parsing import Box
-from app.solver.block_generation import Block
 
 
 def _actual_volume(unit) -> float:

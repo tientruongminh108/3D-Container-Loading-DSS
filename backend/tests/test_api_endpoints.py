@@ -213,9 +213,10 @@ BAD-ITEM,PO-1,10,10
     def test_API_10_websocket_endpoint(self):
         """API-10: WebSocket endpoint structural check"""
         response = client.get("/openapi.json")
+        assert response.status_code == 200
         openapi = response.json()
         paths = openapi.get("paths", {})
-        assert True
+        assert paths is not None
 
 
 class TestAPIValidationAtBoundary:

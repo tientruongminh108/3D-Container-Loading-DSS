@@ -1,17 +1,16 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Any, Optional
 from dataclasses import dataclass
 from app.solver.geometry import (
     BoundingBox,
     Position,
     Dimensions,
     Posture,
-    transform_position_by_posture,
     compute_block_content_rel_pos,
+    transform_position_by_posture,  # noqa: F401
 )
 from app.solver.parsing import Box
 from app.solver.block_generation import Block
 from app.solver.ga import Individual
-from app.solver.fitness import FitnessResult
 from app.core.models import (
     PlacedBox,
     UnplacedCarton,

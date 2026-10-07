@@ -1,7 +1,6 @@
 """Data integrity checks across item_master and all packing lists."""
 from pathlib import Path
 import pandas as pd
-import pytest
 
 
 def get_data_dir() -> Path:

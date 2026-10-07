@@ -4,7 +4,7 @@ Provides a deterministic, high-speed, non-overlapping 3D placement algorithm
 for end-to-end infrastructure stabilization before the mathematical solver runs.
 """
 
-from typing import List, Dict, Optional, Tuple, Any
+from typing import List, Dict, Optional, Any
 import uuid
 from datetime import datetime, timezone
 import colorsys
@@ -21,10 +21,9 @@ from app.core.models import (
     Posture,
     Layer,
     LayerBox,
-    ShipmentType,
     RunOptions,
 )
-from app.core.database import Item as DBItem, Container as DBContainer
+from app.core.database import Container as DBContainer
 
 
 
@@ -60,7 +59,6 @@ def run_deterministic_mock_pack(
         if r.customer_code and r.customer_code not in customer_codes:
             customer_codes.append(r.customer_code)
     
-    shipment_type = ShipmentType.LCL if len(customer_codes) > 1 else ShipmentType.FCL
     customer_seq_map = {code: idx + 1 for idx, code in enumerate(customer_codes)}
 
     # Expand rows into individual cartons

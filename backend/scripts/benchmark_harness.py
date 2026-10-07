@@ -12,7 +12,6 @@ Conforms to PROMPT_coordinate_convention.md:
 """
 
 import sys
-import os
 import time
 import math
 import random
@@ -250,11 +249,11 @@ def run_benchmark(
     wall_secondary: str = "ZY",
     log_file: Optional[Path] = None,
 ) -> Dict[str, Any]:
-    print(f"\n=======================================================")
+    print("\n=======================================================")
     print(f"RUNNING BENCHMARK: {phase} | Dataset: {dataset} | Convention: {convention}")
     print(f"Wall Rule: {wall_rule} (weight={wall_weight}, secondary={wall_secondary})")
     print(f"Seeds: {seeds} | Workers: {workers}")
-    print(f"=======================================================\n")
+    print("=======================================================\n")
     
     datasets = ["LCL", "FCL"] if dataset == "both" else [dataset]
     all_results = {}

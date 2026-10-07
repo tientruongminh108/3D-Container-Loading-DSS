@@ -87,9 +87,9 @@ def compare_phases(baseline_file: str, test_file: str, test_phase_name: str = "T
         ds_keys = sorted([k for k in test_runs.keys() if k[0] == ds], key=lambda k: k[1])
         paired_keys = [k for k in ds_keys if k in base_runs]
 
-        print(f"\n-------------------------------------------------------------")
+        print("\n-------------------------------------------------------------")
         print(f"Dataset: {ds} | Paired Seeds: {len(paired_keys)}")
-        print(f"-------------------------------------------------------------")
+        print("-------------------------------------------------------------")
         print(f"{'Seed':>4} | {'Base Fill':>9} -> {'New Fill':>9} ({'Delta':>7}) | {'Base Placed':>11} -> {'New Placed':>11} | {'LIFO Base':>9} -> {'New':>4} | {'Hard Err':>8}")
         print("-" * 80)
 

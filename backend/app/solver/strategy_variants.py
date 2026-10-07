@@ -1,15 +1,12 @@
-from typing import List, Dict, Tuple, Optional, Any, Set
+from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass, field
-import copy
 import random
-import math
 import os
 from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 
 from app.config import get_settings
 from app.solver.parsing import Box
-from app.solver.block_generation import Block
 from app.solver.geometry import (
     Dimensions,
     Position,
@@ -17,21 +14,17 @@ from app.solver.geometry import (
     Posture,
     ExtremePoint,
     FLOOR_EPSILON,
-    generate_extreme_points,
     sort_extreme_points,
     calculate_contact_ratio,
-    calculate_residual_volume,
-    check_support_ratio,
     unit_weight,
     unit_footprint,
 )
 from app.solver.constraints import (
-    check_weight_capacity,
     check_non_overlap,
     check_container_bounds,
     check_corner_clearance,
 )
-from app.solver.placement import _add_box_extreme_points, is_better_tie_break
+from app.solver.placement import _add_box_extreme_points
 from app.solver.fitness import calculate_fitness, FitnessResult
 
 _worker_groups = None
@@ -569,7 +562,7 @@ def decode_group_individual_dynamic(
     contact_wt = settings.CONTACT_RATIO_WEIGHT
     residual_wt = settings.RESIDUAL_VOLUME_WEIGHT
     c_vol = container_dims.volume()
-    cL, cW, cH = container_dims.length, container_dims.width, container_dims.height
+    cL, cW = container_dims.length, container_dims.width
     wall_penalty = getattr(settings, "WALL_FIRST_PENALTY", 2.0)
     dead_space_wt = getattr(settings, "DEAD_SPACE_WEIGHT", 0.0)
     min_usable_shelf_cm = getattr(settings, "MIN_USABLE_SHELF_CM", 0.0)

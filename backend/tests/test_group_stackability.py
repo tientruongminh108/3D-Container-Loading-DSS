@@ -6,9 +6,8 @@ carton in posture LWH while the candidate footprint was the whole grid.  Multi-c
 grids could therefore (almost) never be stacked on other grids.  The per-carton check
 ``check_grid_cartons_stackability`` is the authoritative one.
 """
-import pytest
 
-from app.solver.geometry import BoundingBox, Dimensions, ExtremePoint, Position, Posture
+from app.solver.geometry import BoundingBox, Dimensions, ExtremePoint, Posture
 from app.solver.parsing import Box
 from app.solver.strategy_variants import (
     GroupIndividual,

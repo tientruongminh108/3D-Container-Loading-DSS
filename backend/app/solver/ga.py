@@ -1,10 +1,8 @@
 import random
-import copy
 from typing import List, Tuple, Callable, Optional
 from dataclasses import dataclass
 from app.config import get_settings
 from app.solver.parsing import Box
-from app.solver.block_generation import Block
 from app.solver.geometry import Dimensions, Posture
 from app.solver.placement import decode_chromosome
 from app.solver.fitness import calculate_fitness, FitnessResult

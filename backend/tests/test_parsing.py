@@ -1,6 +1,6 @@
 import pytest
 import pandas as pd
-from app.solver.parsing import parse_and_join, parse_container_spec, parse_item_master, detect_shipment_type
+from app.solver.parsing import parse_container_spec, parse_item_master, detect_shipment_type
 from app.solver.sorting import initial_sort
 from app.core.models import PackingListRow, ShipmentType
 

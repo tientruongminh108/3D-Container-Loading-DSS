@@ -7,26 +7,22 @@ import time
 import random
 import re
 import pandas as pd
-from io import StringIO
 
 from app.core.models import (
     ItemCreate, ItemUpdate,
     ContainerCreate, ContainerUpdate,
-    PackingListUpload, PackingListPreview, PackingListRow,
+    PackingListUpload, PackingListRow,
     RunCreate, RunCreateQuick, RunOptions,
     RunResult, RunSummary, RunStatus,
     ValidationResponse, ValidationError as ValError,
     PackingListCreate, PackingListUpdate, PackingList as PydanticPackingList, PackingListSummary,
-    Item as PydanticItem, Container as PydanticContainer,
     ShipmentType,
-    Box, PlacedBox, LoadMetrics, UnplacedCarton, UnplacedReason,
+    PlacedBox, LoadMetrics, UnplacedCarton, UnplacedReason,
     Posture, Container as ContainerModel,
 )
-from app.solver.output import Layer
 from app.core.database import Item, Container, Run, PackingList as DBPackingList
 from app.core.exceptions import NotFoundError, ConflictError, ValidationError
 from app.solver.pipeline import run_pipeline
-from app.solver.parsing import parse_container_spec, parse_item_master
 from app.config import get_settings
 from app.services.mock_packer import run_deterministic_mock_pack
 
@@ -42,7 +38,6 @@ def generate_mock_run_result(
     container_length = container.internal_length_cm
     container_width = container.internal_width_cm
     container_height = container.internal_height_cm
-    container_volume = container_length * container_width * container_height
     container_max_weight = container.max_weight_kg
     
     placed_count = max(1, int(total_cartons * 0.85))
@@ -331,7 +326,6 @@ class RunService:
         options: Optional[RunOptions] = None,
     ) -> ValidationResponse:
         try:
-            df = pd.DataFrame([row.model_dump() for row in upload.rows])
             items_dict = self.item_service.get_all_as_dict()
 
             cid = container_id or getattr(upload, "container_id", None)
@@ -420,11 +414,6 @@ class RunService:
 
     def create_run(self, run_create: RunCreate, progress_callback=None) -> RunResult:
         container = self.container_service.get(run_create.container_id)
-        
-        total_cartons = sum(row.qty_cartons for row in run_create.packing_list.rows)
-        
-        customer_codes = {row.customer_code for row in run_create.packing_list.rows if row.customer_code}
-        shipment_type = ShipmentType.LCL if len(customer_codes) > 1 else ShipmentType.FCL
         
         run_id = self.generate_run_id()
         db_run = Run(
@@ -762,9 +751,6 @@ class PackingListService:
 
     def _to_pydantic(self, db_pl: DBPackingList) -> PydanticPackingList:
         rows = json.loads(db_pl.rows_json)
-        preview = None
-        if db_pl.preview_json:
-            preview = json.loads(db_pl.preview_json)
         return PydanticPackingList(
             id=db_pl.id,
             name=db_pl.name,

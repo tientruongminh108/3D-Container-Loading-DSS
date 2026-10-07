@@ -1,7 +1,6 @@
-import pytest
 from app.config import get_settings
 from app.core.models import RunOptions
-from app.solver.pipeline import _resolve_strategy, ResolvedStrategy
+from app.solver.pipeline import _resolve_strategy
 
 
 def test_resolve_strategy_defaults_when_none():

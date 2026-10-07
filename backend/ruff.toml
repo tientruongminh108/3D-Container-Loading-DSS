@@ -1,0 +1,9 @@
+# Ruff configuration for 3D-Container-Loading-DSS backend
+target-version = "py311"
+
+[lint]
+select = ["F", "E9"]
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401", "F403", "F405"]

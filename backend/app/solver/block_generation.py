@@ -1,8 +1,7 @@
-from typing import List, Dict, Tuple, Optional
+from typing import List, Tuple, Optional
 from dataclasses import dataclass, field, replace as dc_replace
 from collections import defaultdict
 from functools import cached_property
-import math
 from app.config import get_settings
 from app.solver.parsing import Box
 from app.solver.geometry import Dimensions, Posture
@@ -201,8 +200,8 @@ def _build_simple_blocks(
             break
 
         def rank_key(cfg):
-            k, nx, ny, nz, dims, infl, cubicity, footprint_aspect, in_deadzone = cfg
-            rem = len(remaining) % k
+            k, nx, ny, nz, dims, infl, cubicity, footprint_aspect, in_deadzone = cfg  # noqa: B023  # False positive: rank_key closure is evaluated immediately in same iteration
+            rem = len(remaining) % k  # noqa: B023  # Evaluated immediately in same iteration
             num_axes_gt_1 = (1 if nx > 1 else 0) + (1 if ny > 1 else 0) + (1 if nz > 1 else 0)
             total_absorbed = len(remaining) - rem
             # Standard 3D-CLP ranking:

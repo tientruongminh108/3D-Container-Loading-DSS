@@ -5,12 +5,10 @@ Tests for:
   - output.build_layers  (X-axis longitudinal slicing, rear->door ordering)
 """
 import pytest
-from datetime import datetime
 from app.solver.geometry import (
     BoundingBox,
     Dimensions,
     ExtremePoint,
-    Position,
     Posture,
     generate_extreme_points,
     project_point_down,

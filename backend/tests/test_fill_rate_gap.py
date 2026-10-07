@@ -1,7 +1,7 @@
 """Tests for fill rate denominator and tolerance gap default/shift (Section B2)."""
 import pytest
 from app.solver.geometry import Dimensions, Posture
-from app.solver.output import calculate_metrics, build_run_result
+from app.solver.output import calculate_metrics
 from app.core.models import PlacedBox, RunOptions
 from app.config import get_settings
 

@@ -1,12 +1,7 @@
-import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
-import json
-from io import StringIO
 
 from app.main import app
-from app.core.database import get_db
-from app.core.models import ContainerCreate, ItemCreate, PackingListRow, ShipmentType
+from app.core.models import PackingListRow, ShipmentType
 
 client = TestClient(app)
 
@@ -86,7 +81,6 @@ class TestContainerValidation:
 
     def test_CONT_06_single_container_per_run(self, db_session):
         """CONT-06: Only one container per run - API should not accept list of containers"""
-        from app.core.models import RunCreate, PackingListUpload
         payload = {
             "packing_list": {
                 "rows": [

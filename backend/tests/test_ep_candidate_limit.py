@@ -1,12 +1,8 @@
 """Tests for extreme point candidate limit and caching (Section A4)."""
-import pytest
 from app.config import get_settings
 from app.solver.geometry import Dimensions, ExtremePoint, BoundingBox
-from app.solver.parsing import Box
 from app.solver.strategy_variants import (
     compute_free_cuboid_at_ep,
-    sort_extreme_points,
-    CartonGroup,
 )
 
 

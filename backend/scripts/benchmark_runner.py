@@ -21,14 +21,13 @@ Conforms strictly to project rules:
 """
 
 import sys
-import os
 import time
 import math
 import random
 import argparse
 import tracemalloc
 from pathlib import Path
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
@@ -48,7 +47,7 @@ def compute_welch_t_test(x1: np.ndarray, x2: np.ndarray) -> Tuple[float, float]:
     t = (m1 - m2) / se
     df_num = (v1 / n1 + v2 / n2) ** 2
     df_den = ((v1 / n1) ** 2) / (n1 - 1) + ((v2 / n2) ** 2) / (n2 - 1)
-    df = df_num / df_den if df_den > 0 else 1.0
+    _df = df_num / df_den if df_den > 0 else 1.0
     # Two-sided p-value approximation via standard normal / t-distribution
     # For df >= 10, normal approximation with erf is accurate within 0.005
     z = abs(t)
@@ -58,7 +57,6 @@ def compute_welch_t_test(x1: np.ndarray, x2: np.ndarray) -> Tuple[float, float]:
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
-from app.config import get_settings
 from app.solver.pipeline import run_pipeline
 from app.solver.validator import validate_solution
 from app.core.models import RunOptions
@@ -269,7 +267,7 @@ def execute_single_run(
             "ga_units_count": ga_units_count,
             "peak_memory_mb": round(peak_mem / (1024 * 1024), 2),
         }
-    except Exception as e:
+    except Exception:
         import traceback
         traceback.print_exc()
         tracemalloc.stop()
@@ -476,7 +474,7 @@ if __name__ == "__main__":
     output_path = BACKEND_DIR / args.output
     seeds = list(range(1, args.num_seeds + 1))
 
-    print(f"Starting Benchmark Suite:")
+    print("Starting Benchmark Suite:")
     print(f"  Datasets: {args.datasets}")
     print(f"  Budgets:  {args.budgets}")
     print(f"  Variants: {args.variants}")

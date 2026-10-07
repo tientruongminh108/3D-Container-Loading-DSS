@@ -5,8 +5,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.solver.parsing import Box
 from app.solver.block_generation import Block
-from app.solver.geometry import Dimensions, Position, BoundingBox, Posture, ExtremePoint
-from app.solver.sorting import initial_sort, resort_after_blocks
+from app.solver.geometry import Dimensions, BoundingBox, Posture, ExtremePoint
+from app.solver.sorting import resort_after_blocks
 from app.solver.utils import get_unit_item_id
 from app.solver.placement import corner_points_for, find_best_placement
 

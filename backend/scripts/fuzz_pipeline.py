@@ -1,7 +1,7 @@
 """Randomised end-to-end fuzz of run_pipeline (usage: python scripts/fuzz_pipeline.py [repo_root] [n_cases] [start_seed]).
 Every result must pass the independent validator, account for every carton exactly once, stay inside the
 wall clearance, and report a fill rate that matches the placed volume."""
-import os, sys, random, json, traceback
+import os, sys, random, json
 from pathlib import Path
 
 os.environ["GA_WORKERS"] = "1"
@@ -16,7 +16,7 @@ else:
         ROOT = str(cur.parents[2])
 
 sys.path.insert(0, ROOT + "/backend")
-import numpy as np, pandas as pd
+import pandas as pd
 from app.solver.pipeline import run_pipeline
 from app.core.models import RunOptions
 from app.solver.validator import validate_solution

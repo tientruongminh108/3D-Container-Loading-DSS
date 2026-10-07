@@ -1,9 +1,8 @@
 from __future__ import annotations
 from enum import Enum
-from typing import Optional, List, Union, Dict, Any
-from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Optional, List, Union
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
-import uuid
 
 
 class Posture(int, Enum):

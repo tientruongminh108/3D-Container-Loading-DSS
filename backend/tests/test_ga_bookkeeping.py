@@ -1,6 +1,4 @@
 """Tests for GA best-individual retention and early-stopping bookkeeping (Section A5)."""
-import pytest
-from unittest.mock import MagicMock
 from app.config import get_settings
 from app.solver.strategy_variants import GroupIndividual
 from app.solver.fitness import FitnessResult

@@ -1,9 +1,9 @@
 """Unit tests for multi-objective fitness function and anti-fragmentation penalty."""
 
 import pytest
-from app.solver.geometry import Dimensions, Position, BoundingBox, Posture
+from app.solver.geometry import Dimensions, BoundingBox, Posture
 from app.solver.parsing import Box
-from app.solver.fitness import calculate_fitness, FitnessResult
+from app.solver.fitness import calculate_fitness
 from app.config import get_settings
 
 

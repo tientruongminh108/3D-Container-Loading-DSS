@@ -1,5 +1,4 @@
 import pandas as pd
-import pytest
 from app.solver.pipeline import run_pipeline
 from app.core.models import RunOptions, UnplacedReason
 from app.solver.output import _map_unplaced_reason

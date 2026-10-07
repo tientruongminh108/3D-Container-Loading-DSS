@@ -5,7 +5,6 @@ Provides session-scoped database isolation so that repeated test runs
 do not collide on unique constraints (container_type, item_id, etc.).
 """
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool

@@ -1,11 +1,10 @@
 import pytest
-from app.solver.geometry import Dimensions, BoundingBox, Position, Posture
+from app.solver.geometry import Dimensions, BoundingBox, Posture
 from app.solver.parsing import Box
 from app.solver.compaction import (
     compact_x_rear,
     compact_y_sidewall,
     compact_z_downward,
-    rescan_and_insert,
     run_compaction_pass,
 )
 

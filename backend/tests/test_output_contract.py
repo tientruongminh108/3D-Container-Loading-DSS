@@ -1,9 +1,8 @@
 import pytest
 from datetime import datetime, timezone
-from typing import List
 from app.core.models import (
     RunResult, LoadMetrics, PlacedBox, UnplacedCarton,
-    Container, ShipmentType, RunStatus, Posture, UnplacedReason
+    Container, RunStatus, Posture, UnplacedReason
 )
 
 

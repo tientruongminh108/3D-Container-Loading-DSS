@@ -1,5 +1,4 @@
 import pandas as pd
-import uuid
 from typing import List, Tuple, Optional, Dict
 from dataclasses import dataclass
 from app.config import get_settings
@@ -9,11 +8,10 @@ from app.core.models import (
     PackingListPreview,
     ShipmentType,
     ItemBase,
-    ContainerBase,
     Posture,
 )
 from app.core.exceptions import ValidationError
-from app.solver.geometry import get_permitted_postures, Dimensions
+from app.solver.geometry import get_permitted_postures
 
 
 @dataclass

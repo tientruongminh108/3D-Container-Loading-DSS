@@ -1,4 +1,3 @@
-import pytest
 from app.config import get_settings
 from app.core.models import RunOptions
 

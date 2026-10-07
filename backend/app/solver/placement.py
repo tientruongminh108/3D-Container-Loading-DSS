@@ -9,16 +9,11 @@ from app.solver.geometry import (
     Posture,
     ExtremePoint,
     FLOOR_EPSILON,
-    generate_extreme_points,
     sort_extreme_points,
     calculate_contact_ratio,
     calculate_residual_volume,
-    get_permitted_postures,
     project_point_down,
     prune_dominated_extreme_points,
-    rear_face,
-    door_face,
-    is_deeper,
     get_unit_inflated_dims,
 )
 from app.solver.parsing import Box
@@ -396,8 +391,6 @@ def place_boxes_greedy(
 
     for box in boxes:
         if corner_phase:
-            # Try corner points first
-            box_dims = Dimensions(box.length_cm, box.width_cm, box.height_cm)
             # We'll try each permitted posture at corners
             placed_at_corner = False
             

@@ -1,11 +1,9 @@
 from typing import List, Callable, Optional, Tuple, Any
 from dataclasses import dataclass
 from app.config import get_settings
-from app.solver.parsing import parse_and_join, Box, ContainerSpec, PackingListPreview, ShipmentType
-from app.solver.sorting import initial_sort, resort_after_blocks
-from app.solver.block_generation import build_blocks, Block
-from app.solver.ga import genetic_algorithm, Individual
-from app.solver.placement import decode_chromosome, place_blocks_greedy
+from app.solver.parsing import parse_and_join, Box, ContainerSpec, ShipmentType
+from app.solver.block_generation import Block
+from app.solver.ga import Individual
 from app.solver.output import build_run_result
 import time
 from app.solver.geometry import Dimensions, BoundingBox, get_unit_inflated_dims

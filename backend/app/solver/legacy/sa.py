@@ -1,11 +1,10 @@
 import random
 import math
 import copy
-from typing import List, Callable, Optional, Tuple, TYPE_CHECKING
+from typing import List, Callable, Tuple, TYPE_CHECKING
 from app.config import get_settings
 from app.solver.parsing import Box
 from app.solver.geometry import Dimensions
-from app.solver.fitness import calculate_fitness, FitnessResult
 
 if TYPE_CHECKING:
     from app.solver.ga import Individual

@@ -9,11 +9,11 @@ data_dir = BACKEND_DIR.parent / "data"
 sys.path.insert(0, str(BACKEND_DIR))
 
 from app.solver.pipeline import run_pipeline
-from app.solver.block_generation import Block, build_blocks
+from app.solver.block_generation import build_blocks
 from app.solver.parsing import parse_and_join
 from app.solver.sorting import initial_sort, resort_after_blocks
-from app.solver.placement import place_blocks_greedy, check_all_constraints, PlacementCandidate
-from app.solver.geometry import Dimensions, Position, BoundingBox, Posture
+from app.solver.placement import check_all_constraints, PlacementCandidate
+from app.solver.geometry import Dimensions, Position
 from app.config import get_settings
 
 def progress_cb(stage, p, d):
@@ -21,13 +21,11 @@ def progress_cb(stage, p, d):
 
 def test_block_at_origin(block, container_dims, max_weight, is_lcl):
     """Test each permitted posture at origin (0,0,0) - returns dict with rejection reasons."""
-    settings = get_settings()
     results = []
     for posture in block.permitted_postures:
         dims = Dimensions(block.length_cm, block.width_cm, block.height_cm).apply_posture(posture)
         inflated = Dimensions(block.inflated_length, block.inflated_width, block.inflated_height).apply_posture(posture)
         pos = Position(0,0,0)
-        bbox = BoundingBox.from_position_and_dims(pos, inflated)
         valid, reason = check_all_constraints(
             PlacementCandidate(position=pos, posture=posture, dims=inflated, actual_dims=dims,
                                box=block.boxes[0] if block.boxes else None),

@@ -1,10 +1,10 @@
-from typing import List, Callable, Optional, Tuple, Any
+from typing import List, Callable, Optional
 from app.solver.parsing import Box, ContainerSpec, ShipmentType
 from app.solver.sorting import initial_sort, resort_after_blocks
-from app.solver.block_generation import build_blocks, Block
+from app.solver.block_generation import build_blocks
 from app.solver.ga import genetic_algorithm, Individual
 from app.solver.placement import decode_chromosome
-from app.solver.geometry import Dimensions, BoundingBox
+from app.solver.geometry import Dimensions
 
 
 def run_variant_ab(

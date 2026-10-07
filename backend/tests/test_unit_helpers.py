@@ -1,8 +1,7 @@
-import pytest
 from app.config import get_settings
 from app.solver.parsing import Box
 from app.solver.block_generation import Block
-from app.solver.geometry import Dimensions, Posture, unit_weight, unit_footprint
+from app.solver.geometry import Posture, unit_weight, unit_footprint
 
 
 def test_unit_weight_and_footprint():

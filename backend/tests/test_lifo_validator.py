@@ -1,5 +1,4 @@
 """Tests for LIFO delivery order soft validator metric (Section B1)."""
-import pytest
 from app.solver.geometry import Dimensions, Posture
 from app.solver.validator import validate_solution
 from app.core.models import PlacedBox

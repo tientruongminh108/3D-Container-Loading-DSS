@@ -1,5 +1,5 @@
 import pytest
-from app.solver.block_generation import build_blocks, Block
+from app.solver.block_generation import build_blocks
 from app.solver.parsing import Box
 from app.solver.geometry import Posture
 

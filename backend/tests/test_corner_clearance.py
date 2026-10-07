@@ -1,10 +1,10 @@
 import pytest
-from app.solver.geometry import Dimensions, BoundingBox, Position, Posture
+from app.solver.geometry import Dimensions, BoundingBox, Posture
 from app.solver.constraints import check_corner_clearance
 from app.solver.compaction import is_valid_shift
 from app.solver.validator import validate_solution
 from app.core.models import PlacedBox
-from app.config import CORNER_BLOCK_X_CM, CORNER_BLOCK_Y_CM, CORNER_BLOCK_Z_CM
+from app.config import CORNER_BLOCK_Z_CM
 
 
 @pytest.fixture

@@ -3,7 +3,6 @@ import copy
 from app.solver.geometry import (
     Dimensions,
     BoundingBox,
-    ExtremePoint,
     Posture,
     FLOOR_EPSILON,
     generate_extreme_points,
@@ -11,7 +10,6 @@ from app.solver.geometry import (
     check_support_ratio,
     compute_block_content_rel_pos,
     unit_weight,
-    unit_footprint,
 )
 from app.solver.fitness import calculate_fitness, FitnessResult
 from app.solver.placement import find_best_placement, _add_box_extreme_points

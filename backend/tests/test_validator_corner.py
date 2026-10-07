@@ -1,5 +1,4 @@
 """Tests for corner-clearance validation in validator.py."""
-import pytest
 from app.config import get_settings
 from app.core.models import PlacedBox
 from app.solver.geometry import Dimensions, Posture
@@ -57,9 +56,7 @@ def test_validator_detects_corner_casting_violation():
 
 
 def test_validator_accepts_clean_layout():
-    settings = get_settings()
     c = Dimensions(589.8, 235.2, 239.3)
-    cz = settings.CORNER_BLOCK_Z_CM
 
     # Clean box 1: on the floor, well below the ceiling
     box1 = _make_placed_box("B_FLOOR", x=100.0, y=100.0, z=0.0, l=100.0, w=100.0, h=100.0)

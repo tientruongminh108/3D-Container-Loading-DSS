@@ -1,9 +1,7 @@
 import pytest
-from sqlalchemy import text, inspect
 from sqlalchemy.exc import IntegrityError
 from app.core.database import Base
 from app.core.database import Container as DBContainer, Item as DBItem, PackingList as DBPackingList, Run as DBRun
-from app.core.models import PackingListRow
 
 # Import test engine and session from conftest
 from tests.conftest import test_engine as engine, TestSessionLocal as SessionLocal

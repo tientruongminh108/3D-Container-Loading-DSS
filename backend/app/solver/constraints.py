@@ -7,13 +7,9 @@ from app.solver.geometry import (
     Position,
     Posture,
     FLOOR_EPSILON,
-    check_support_ratio,
-    check_cog_balance,
-    transform_position_by_posture,
     compute_block_content_rel_pos,
 )
 from app.solver.parsing import Box
-from app.solver.block_generation import Block
 
 
 @dataclass

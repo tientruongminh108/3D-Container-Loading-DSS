@@ -1,6 +1,5 @@
 """Tests for Phase 3: Wall-first placement rules (A, B, C) and tie-breaking."""
 
-import pytest
 from app.solver.geometry import Dimensions, Position, BoundingBox, Posture
 from app.solver.parsing import Box
 from app.solver.placement import is_better_tie_break, find_best_placement
