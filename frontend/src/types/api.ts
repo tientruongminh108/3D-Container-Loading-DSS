@@ -15,6 +15,7 @@ export enum ShipmentType {
 export enum UnplacedReason {
   NO_SPACE = 'no_space',
   LIFO_BLOCKED = 'lifo_blocked',
+  WEIGHT_CAPACITY = 'weight_capacity',
 }
 
 export enum RunStatus {

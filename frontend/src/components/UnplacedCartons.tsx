@@ -23,6 +23,10 @@ export function UnplacedCartons({ unplacedCartons }: UnplacedCartonsProps) {
       label: 'LIFO Blocked',
       description: 'Cargo blocked by later customer\'s cargo. Reconsider delivery order or accept shortfall.',
     },
+    [UnplacedReason.WEIGHT_CAPACITY]: {
+      label: 'Weight Limit Exceeded',
+      description: 'Container payload weight capacity reached. Consider splitting heavy items across containers.',
+    },
   }
 
   return (
@@ -38,7 +42,10 @@ export function UnplacedCartons({ unplacedCartons }: UnplacedCartonsProps) {
       </div>
 
       {Object.entries(byReason).map(([reason, cartons]) => {
-        const info = reasonLabels[reason as UnplacedReason]
+        const info = reasonLabels[reason as UnplacedReason] || {
+          label: reason,
+          description: 'Carton could not be placed due to operational constraints.',
+        }
         return (
           <div key={reason} className="unplaced-group">
             <div className="unplaced-group-title">
@@ -56,7 +63,7 @@ export function UnplacedCartons({ unplacedCartons }: UnplacedCartonsProps) {
                       {carton.customer_code && ` • ${carton.customer_code}`}
                     </span>
                   </div>
-                  <span className={`badge-inline ${reason === UnplacedReason.LIFO_BLOCKED ? 'badge-lcl-inline' : ''}`}>
+                  <span className={`badge-inline ${reason === UnplacedReason.LIFO_BLOCKED ? 'badge-lcl-inline' : reason === UnplacedReason.WEIGHT_CAPACITY ? 'badge-weight-inline' : ''}`}>
                     {info.label}
                   </span>
                 </div>

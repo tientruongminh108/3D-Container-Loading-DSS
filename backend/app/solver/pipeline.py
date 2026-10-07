@@ -150,8 +150,17 @@ def _finalize(
         else:
             placed_individual_boxes.append(unit)
 
-    final_unplaced_blocks = [u for u, _ in unplaced if isinstance(u, Block)]
-    final_unplaced_boxes = [u for u, _ in unplaced if not isinstance(u, Block)]
+    final_unplaced_blocks = []
+    final_unplaced_boxes = []
+    for u, r in unplaced:
+        if isinstance(u, Block):
+            u.unplaced_reason = r
+            for c in u.contents:
+                c.unplaced_reason = r
+            final_unplaced_blocks.append(u)
+        else:
+            u.unplaced_reason = r
+            final_unplaced_boxes.append(u)
 
     planning_time_sec = round(time.perf_counter() - start_time, 2)
 

@@ -21,6 +21,7 @@ class Block:
     inflated_width: float
     inflated_height: float
     contents: List[Box] = field(default_factory=list)
+    unplaced_reason: Optional[str] = None
 
     def dims(self) -> Dimensions:
         return Dimensions(self.length_cm, self.width_cm, self.height_cm)

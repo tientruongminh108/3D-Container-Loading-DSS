@@ -305,20 +305,37 @@ def calculate_metrics(
     )
 
 
+def _map_unplaced_reason(reason: Any) -> UnplacedReason:
+    if isinstance(reason, UnplacedReason):
+        return reason
+    r = str(reason).lower() if reason is not None else ""
+    if r == "weight_capacity":
+        return UnplacedReason.WEIGHT_CAPACITY
+    if r == "lifo_blocked":
+        return UnplacedReason.LIFO_BLOCKED
+    return UnplacedReason.NO_SPACE
+
+
 def build_unplaced_cartons(
-    unplaced_boxes: List[Box],
-    unplaced_blocks: List[Block],
+    unplaced_boxes: List[Any],
+    unplaced_blocks: List[Any],
     is_lcl: bool,
 ) -> List[UnplacedCarton]:
     result = []
     seen_box_ids = set()
 
-    for box in unplaced_boxes:
+    for item in unplaced_boxes:
+        if isinstance(item, tuple):
+            box, r_str = item
+        else:
+            box = item
+            r_str = getattr(box, "unplaced_reason", None) or getattr(box, "reason", None)
+
         if box.box_id in seen_box_ids:
             continue
         seen_box_ids.add(box.box_id)
         
-        reason = UnplacedReason.NO_SPACE
+        reason = _map_unplaced_reason(r_str)
         result.append(
             UnplacedCarton(
                 box_id=box.box_id,
@@ -334,13 +351,20 @@ def build_unplaced_cartons(
             )
         )
 
-    for block in unplaced_blocks:
+    for item in unplaced_blocks:
+        if isinstance(item, tuple):
+            block, r_str = item
+        else:
+            block = item
+            r_str = getattr(block, "unplaced_reason", None) or getattr(block, "reason", None)
+
         for content in block.contents:
             if content.box_id in seen_box_ids:
                 continue
             seen_box_ids.add(content.box_id)
             
-            reason = UnplacedReason.NO_SPACE
+            c_reason = getattr(content, "unplaced_reason", None) or r_str
+            reason = _map_unplaced_reason(c_reason)
             result.append(
                 UnplacedCarton(
                     box_id=content.box_id,

@@ -477,7 +477,7 @@ def rescan_and_insert(
                 sorted_eps = sort_extreme_points(extreme_points)
                 elevated_eps = [ep for ep in sorted_eps if ep.z > FLOOR_EPSILON]
             else:
-                remaining_after_top.append((unit, old_reason))
+                remaining_after_top.append((unit, reason or old_reason))
         unplaced = remaining_after_top
     # -----------------------------------------------------------------------
 
@@ -522,7 +522,7 @@ def rescan_and_insert(
                 )
                 sorted_eps = sort_extreme_points(extreme_points)
             else:
-                remaining_after_heavy.append((unit, old_reason))
+                remaining_after_heavy.append((unit, reason or old_reason))
         unplaced = remaining_after_heavy
     # -----------------------------------------------------------------------
 

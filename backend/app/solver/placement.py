@@ -628,6 +628,7 @@ def decode_chromosome(
         postures_to_try = [first_posture] + [p for p in permitted if p != first_posture]
 
         placed = False
+        last_reason = "no_space"
 
         for posture in postures_to_try:
             # If still in corner phase, try corner points first
@@ -683,6 +684,8 @@ def decode_chromosome(
                         if len(occupied_corners) >= max_corners:
                             corner_phase = False
                         break
+                    else:
+                        last_reason = reason
 
                 if placed_at_corner:
                     break  # Break out of posture loop
@@ -725,6 +728,7 @@ def decode_chromosome(
                 )
                 break  # Break out of posture loop
             else:
+                last_reason = reason
                 # find_best_placement already tested all permitted postures against all extreme points.
                 # If it failed, no posture can fit at any current extreme point.
                 break
@@ -765,8 +769,10 @@ def decode_chromosome(
                 )
                 # A general EP succeeded — don't penalise the corner-failure counter
                 corner_consecutive_failures = max(0, corner_consecutive_failures - 1)
+            else:
+                last_reason = reason
 
         if not placed:
-            unplaced.append((box, 'no_space'))
+            unplaced.append((box, last_reason))
 
     return placed_bboxes, placed_data, unplaced, current_weight, placed_postures

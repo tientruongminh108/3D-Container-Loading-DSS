@@ -36,6 +36,7 @@ class Box:
     rel_x: float = 0.0
     rel_y: float = 0.0
     rel_z: float = 0.0
+    unplaced_reason: Optional[str] = None
 
 
 @dataclass
